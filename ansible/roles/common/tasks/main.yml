@@ -1,0 +1,3 @@
+---
+- name: Set System Hostname
+  raw: uci set system.@system[0].hostname="{{ inventory_hostname }}" && uci commit system

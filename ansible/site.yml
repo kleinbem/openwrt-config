@@ -1,0 +1,16 @@
+# 1. Configure the PHYSICAL Routers (FrankW OpenWrt)
+- name: Configure Routers
+  hosts: routers
+  gather_facts: yes
+  roles:
+    - common
+    - router
+
+# 2. Configure the VIRTUAL Brains (NixOS)
+# Note: Ansible just triggers the rebuild or manages simple keys here.
+# The heavy lifting is done by the deploy-brain.sh script.
+- name: Verify Brain Connectivity
+  hosts: brains
+  tasks:
+    - name: Ping
+      ping:

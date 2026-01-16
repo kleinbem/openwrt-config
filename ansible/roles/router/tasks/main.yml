@@ -1,0 +1,20 @@
+---
+# Setup the LXC Host Environment (Only on Router B)
+- name: Setup LXC Host Config (Router B)
+  when: inventory_hostname == 'router-b'
+  block:
+    - name: Ensure NVMe mount point exists
+      file: path=/srv/lxc state=directory
+
+    - name: Configure LXC to use NVMe
+      lineinfile:
+        path: /etc/lxc/lxc.conf
+        line: "lxc.lxcpath = /srv/lxc"
+        create: yes
+
+    - name: Enable LXC Nesting (for Podman inside)
+      blockinfile:
+        path: /etc/lxc/default.conf
+        block: |
+          lxc.mount.auto = cgroup:mixed proc:mixed sys:mixed
+          lxc.apparmor.profile = unconfined

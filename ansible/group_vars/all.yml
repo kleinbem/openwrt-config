@@ -1,0 +1,4 @@
+wifi_ssid: "MyHome_10G"
+wifi_pass: "YourSuperSecretPassword"
+roaming_id: "1234" # 802.11r Domain
+timezone: "Europe/Dublin"
