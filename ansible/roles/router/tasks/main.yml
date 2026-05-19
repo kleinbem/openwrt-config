@@ -1,4 +1,21 @@
 ---
+# Monitoring & Telemetry (Lightweight exporter for OpenWrt)
+- name: Install Prometheus Node Exporter (LUA)
+  opkg:
+    name:
+      - prometheus-node-exporter-lua
+      - prometheus-node-exporter-lua-nat64
+      - prometheus-node-exporter-lua-netstat
+      - prometheus-node-exporter-lua-openwrt
+      - prometheus-node-exporter-lua-wifi
+    state: present
+
+- name: Enable and Start Node Exporter
+  service:
+    name: prometheus-node-exporter-lua
+    enabled: yes
+    state: started
+
 # Setup the LXC Host Environment (Only on Router B)
 - name: Setup LXC Host Config (Router B)
   when: inventory_hostname == 'router-b'

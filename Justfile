@@ -5,6 +5,16 @@ set dotenv-load
 default:
     @just --list
 
+# --- Aliases for Meta-Repo consistency ---
+
+provision *args:
+    @just deploy {{args}}
+
+verify:
+    @just check all
+
+# --- Core Commands ---
+
 # Configure all routers
 deploy:
     ansible-playbook -i ansible/inventory.ini ansible/site.yml
