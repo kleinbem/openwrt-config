@@ -2,3 +2,40 @@ wifi_ssid: "MyHome_10G"
 wifi_pass: "YourSuperSecretPassword"
 roaming_id: "1234" # 802.11r Domain
 timezone: "Europe/Dublin"
+
+# ---------------------------------------------------------------------------
+# Fleet LAN / DNS (consumed by roles/router — see tasks/main.yml)
+# ---------------------------------------------------------------------------
+# The fleet lives on 10.0.0.0/16: Tang 10.0.0.5 (Orin's headless LUKS unlock),
+# AdGuard 10.0.0.21 (LAN DNS). The gateway MUST serve this subnet, or clevis
+# (bound to http://10.0.0.5:7654) can't unlock the Orin at boot.
+lan_gateway: "10.0.0.1"
+lan_netmask: "255.255.0.0"
+adguard_ip: "10.0.0.21" # hass-pi — handed to DHCP clients as their resolver (option 6)
+
+# ---------------------------------------------------------------------------
+# Static DHCP reservations
+# ---------------------------------------------------------------------------
+# Pins critical hosts to fixed IPs so leases don't drift. This was the root
+# cause of the Orin's headless-unlock outage (2026-05-30): the workstation's
+# randomized Wi-Fi MAC kept getting a new DHCP lease, so the Tang server it
+# hosts wandered off 10.0.0.5 and the Orin's clevis (bound to
+# http://10.0.0.5:7654) could no longer auto-unlock LUKS.
+#
+# STATUS / TODO before this is usable:
+#   1. ✅ Consumed — roles/router renders these into UCI dhcp host sections and
+#      hands clients AdGuard via DHCP option 6 (gateway hosts only). Applied on
+#      `just deployment::router-provision` once the OpenWrt router is in place.
+#   2. `mac` is a placeholder — read the workstation's REAL MAC with
+#      `cat /sys/class/net/wlo1/address` AFTER `just apply` flips
+#      cloned-mac-address=permanent (today it shows the randomized
+#      02:b5:08:b9:3f:97, not the factory MAC).
+#   3. Subnet check — inventory.nix puts the OpenWrt LAN on 192.168.1.x while
+#      Tang/clevis currently lives on 10.0.0.0/16. If the OpenWrt LAN is NOT
+#      10.0.0.0/16, both the `ip` below AND the Orin's clevis binding must move
+#      to the new subnet together.
+static_leases:
+  - name: nixos-nvme        # workstation — hosts Tang for the Orin's headless LUKS unlock
+    ip: "10.0.0.5"
+    mac: "b0:dc:ef:cd:37:73" # wlo1 factory MAC (confirmed 2026-05-30 after cloned-mac-address=permanent)
+                             # Currently reserved on the Netgear Orbi; migrate this lease to OpenWrt when it replaces the Orbi.

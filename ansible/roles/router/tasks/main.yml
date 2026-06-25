@@ -1,4 +1,48 @@
 ---
+# ---------------------------------------------------------------------------
+# Fleet gateway: DHCP + DNS handoff + LAN subnet  (gateway hosts only)
+# ---------------------------------------------------------------------------
+# Hands every DHCP client AdGuard (hass-pi, {{ adguard_ip }}) as its DNS
+# resolver via option 6, pins the fleet's critical static leases, and puts the
+# LAN on 10.0.0.0/16. The fleet's Tang (10.0.0.5) + AdGuard ({{ adguard_ip }})
+# live on this subnet, so the LAN MUST be 10.0.0.0/16 — otherwise the Orin's
+# headless LUKS unlock (clevis bound to http://10.0.0.5:7654) breaks. dnsmasq
+# keeps serving DHCP and the router keeps its own WAN upstream (no DNS SPOF if
+# hass-pi is down); only clients are pointed at AdGuard.
+#
+# NOTE: the final LAN-address task reloads the network and drops the SSH
+# session if you're connected over the LAN you're changing — reconnect at
+# {{ lan_gateway }}. Apply when provisioning the new OpenWrt router into place.
+- name: Configure fleet gateway (DHCP + DNS handoff + LAN subnet)
+  when: "'gateways' in group_names"
+  block:
+    - name: Hand DHCP clients AdGuard as their DNS resolver (option 6)
+      raw: |
+        uci -q delete dhcp.lan.dhcp_option
+        uci add_list dhcp.lan.dhcp_option='6,{{ adguard_ip }}'
+        uci commit dhcp
+
+    - name: Pin fleet static DHCP reservations
+      raw: |
+        uci -q delete dhcp.{{ item.name }}
+        uci set dhcp.{{ item.name }}=host
+        uci set dhcp.{{ item.name }}.name='{{ item.name }}'
+        uci set dhcp.{{ item.name }}.ip='{{ item.ip }}'
+        uci set dhcp.{{ item.name }}.mac='{{ item.mac }}'
+        uci commit dhcp
+      loop: "{{ static_leases }}"
+
+    - name: Restart dnsmasq (apply DHCP/DNS changes)
+      raw: /etc/init.d/dnsmasq restart
+
+    - name: Set LAN address on the fleet subnet (reloads network — drops SSH on this LAN)
+      raw: |
+        uci set network.lan.ipaddr='{{ lan_gateway }}'
+        uci set network.lan.netmask='{{ lan_netmask }}'
+        uci commit network
+        /etc/init.d/network reload
+      ignore_errors: true # connection drops as the router's own IP changes — expected
+
 # Monitoring & Telemetry (Lightweight exporter for OpenWrt)
 - name: Install Prometheus Node Exporter (LUA)
   opkg:
