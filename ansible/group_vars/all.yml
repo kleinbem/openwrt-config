@@ -16,14 +16,65 @@ roaming_id: "1234" # 802.11r Domain
 timezone: "Europe/Dublin"
 
 # ---------------------------------------------------------------------------
-# Fleet LAN / DNS (consumed by roles/router — see tasks/main.yml)
+# AdGuard resolver — handed to DHCP clients in every VLAN (option 6).
+# hass-pi, in the infra VLAN. See docs/NETWORK_PLAN.md.
 # ---------------------------------------------------------------------------
-# The fleet lives on 10.0.0.0/16: Tang 10.0.0.5 (Orin's headless LUKS unlock),
-# AdGuard 10.0.0.21 (LAN DNS). The gateway MUST serve this subnet, or clevis
-# (bound to http://10.0.0.5:7654) can't unlock the Orin at boot.
+adguard_ip: "10.0.0.21"
+
+# ---------------------------------------------------------------------------
+# VLAN-segmented 10.x — SOURCE OF TRUTH for the network role (to be built).
+# Design + firewall matrix: ../../../docs/NETWORK_PLAN.md.
+# The fleet (Tang 10.0.0.5, AdGuard 10.0.0.21, headless-unlock hosts) all live
+# in the `infra` VLAN, so clevis LUKS unlock stays within-zone. Do NOT move
+# Tang or an unlock host out of infra without moving the clevis binding.
+# `wan: true` = internet allowed; `reach` = other zones this VLAN may initiate
+# to (dns = AdGuard :53/:853 only). Enforced by the firewall role.
+# ---------------------------------------------------------------------------
+vlans:
+  - id: 1
+    name: infra
+    subnet: "10.0.0.0/24"
+    gateway: "10.0.0.1"
+    dhcp: { start: 100, limit: 100 } # .100–.199; fleet uses static leases below
+    wan: true
+    reach: [trusted] # who may reach infra is set per-zone below; infra itself:
+    reach_out: [iot, cameras, trusted] # infra can manage everything
+  - id: 10
+    name: trusted
+    subnet: "10.0.10.0/24"
+    gateway: "10.0.10.1"
+    dhcp: { start: 50, limit: 200 }
+    wan: true
+    reach_out: [infra, iot, cameras]
+  - id: 20
+    name: iot
+    subnet: "10.0.20.0/24"
+    gateway: "10.0.20.1"
+    dhcp: { start: 50, limit: 200 }
+    wan: true
+    reach_out: [dns] # internet + AdGuard DNS only, no LAN
+  - id: 30
+    name: cameras
+    subnet: "10.0.30.0/24"
+    gateway: "10.0.30.1"
+    dhcp: { start: 50, limit: 200 }
+    wan: false # no phone-home; trusted/NVR pulls streams
+    reach_out: [dns]
+  - id: 40
+    name: guest
+    subnet: "10.0.40.0/24"
+    gateway: "10.0.40.1"
+    dhcp: { start: 50, limit: 200 }
+    wan: true
+    reach_out: [dns] # internet only
+
+# --- INTERIM flat vars (pre-segmentation) --------------------------------
+# The current router role (tasks/main.yml) still does a FLAT 10.0.0.1/16 via
+# these. They are superseded by `vlans` above once the network role lands;
+# remove them then. Kept so a bench deploy today still produces a working
+# (unsegmented) gateway.
 lan_gateway: "10.0.0.1"
 lan_netmask: "255.255.0.0"
-adguard_ip: "10.0.0.21" # hass-pi — handed to DHCP clients as their resolver (option 6)
 
 # ---------------------------------------------------------------------------
 # Static DHCP reservations
