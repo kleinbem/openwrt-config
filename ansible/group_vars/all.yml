@@ -1,5 +1,14 @@
+---
 wifi_ssid: "MyHome_10G"
-wifi_pass: "YourSuperSecretPassword"
+# The Wi-Fi passphrase must never sit in git — it lives in openwrt-secrets
+# (sops/age, top-level key `wifi_pass`; add via `just secrets::edit secrets.yaml`).
+# Lazy lookup: only evaluated by tasks that actually use it, so provisioning
+# still works before the key exists (falls back to CHANGE-ME).
+wifi_pass: >-
+  {{ ((lookup('community.sops.sops',
+              playbook_dir ~ '/../../openwrt-secrets/secrets.yaml',
+              empty_on_not_found=true) or '{}')
+      | from_yaml).wifi_pass | default('CHANGE-ME', true) }}
 roaming_id: "1234" # 802.11r Domain
 timezone: "Europe/Dublin"
 
@@ -35,7 +44,10 @@ adguard_ip: "10.0.0.21" # hass-pi — handed to DHCP clients as their resolver (
 #      10.0.0.0/16, both the `ip` below AND the Orin's clevis binding must move
 #      to the new subnet together.
 static_leases:
-  - name: nixos-nvme        # workstation — hosts Tang for the Orin's headless LUKS unlock
+  # nixos-nvme: workstation — hosts Tang for the Orin's headless LUKS unlock.
+  # MAC is the wlo1 factory MAC (confirmed 2026-05-30 after
+  # cloned-mac-address=permanent). Currently reserved on the Netgear Orbi;
+  # migrate this lease to OpenWrt when it replaces the Orbi.
+  - name: nixos-nvme
     ip: "10.0.0.5"
-    mac: "b0:dc:ef:cd:37:73" # wlo1 factory MAC (confirmed 2026-05-30 after cloned-mac-address=permanent)
-                             # Currently reserved on the Netgear Orbi; migrate this lease to OpenWrt when it replaces the Orbi.
+    mac: "b0:dc:ef:cd:37:73"

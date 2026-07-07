@@ -1,0 +1,21 @@
+---
+extends: default
+
+# Rule tweaks below stay within what ansible-lint's embedded yamllint
+# config accepts (it warns on incompatible overrides).
+rules:
+  line-length:
+    max: 140
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  truthy:
+    allowed-values: ["true", "false"]
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+
+ignore: |
+  .direnv/
