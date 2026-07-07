@@ -1,19 +1,17 @@
 ---
 # ---------------------------------------------------------------------------
-# Fleet gateway: DHCP + DNS handoff + LAN subnet  (gateway hosts only)
+# Fleet gateway: DHCP + DNS handoff  (gateway hosts only, connection-safe)
 # ---------------------------------------------------------------------------
 # Hands every DHCP client AdGuard (hass-pi, {{ adguard_ip }}) as its DNS
-# resolver via option 6, pins the fleet's critical static leases, and puts the
-# LAN on 10.0.0.0/16. The fleet's Tang (10.0.0.5) + AdGuard ({{ adguard_ip }})
-# live on this subnet, so the LAN MUST be 10.0.0.0/16 — otherwise the Orin's
-# headless LUKS unlock (clevis bound to http://10.0.0.5:7654) breaks. dnsmasq
-# keeps serving DHCP and the router keeps its own WAN upstream (no DNS SPOF if
-# hass-pi is down); only clients are pointed at AdGuard.
+# resolver via option 6 and pins the fleet's critical static leases. These
+# change what the router serves to CLIENTS, not the router's own IP, so the
+# SSH session survives. dnsmasq keeps serving DHCP and the router keeps its
+# own WAN upstream (no DNS SPOF if hass-pi is down).
 #
-# NOTE: the final LAN-address task reloads the network and drops the SSH
-# session if you're connected over the LAN you're changing — reconnect at
-# {{ lan_gateway }}. Apply when provisioning the new OpenWrt router into place.
-- name: Configure fleet gateway (DHCP + DNS handoff + LAN subnet)
+# The LAN-subnet move (which DOES drop SSH) is deliberately the LAST task in
+# this role — see "Set LAN address" at the bottom — so the exporter + LXC
+# tasks below still run over a live connection on the gateway.
+- name: Configure fleet gateway DHCP + DNS handoff
   when: "'gateways' in group_names"
   block:
     - name: Hand DHCP clients AdGuard as their DNS resolver (option 6)
@@ -34,14 +32,6 @@
 
     - name: Restart dnsmasq (apply DHCP/DNS changes)
       raw: /etc/init.d/dnsmasq restart
-
-    - name: Set LAN address on the fleet subnet (reloads network — drops SSH on this LAN)
-      raw: |
-        uci set network.lan.ipaddr='{{ lan_gateway }}'
-        uci set network.lan.netmask='{{ lan_netmask }}'
-        uci commit network
-        /etc/init.d/network reload
-      ignore_errors: true # connection drops as the router's own IP changes — expected
 
 # Monitoring & Telemetry (Lightweight exporter for OpenWrt)
 # The collectors are baked into the firmware image (openwrt-builder profile);
@@ -88,3 +78,25 @@
         block: |
           lxc.mount.auto = cgroup:mixed proc:mixed sys:mixed
           lxc.apparmor.profile = unconfined
+
+# ---------------------------------------------------------------------------
+# TERMINAL TASK — moves the gateway's own LAN IP onto the fleet subnet.
+# ---------------------------------------------------------------------------
+# The fleet lives on 10.0.0.0/16: Tang 10.0.0.5 (Orin's headless LUKS unlock),
+# AdGuard {{ adguard_ip }} (LAN DNS). The gateway MUST serve this subnet, or
+# clevis (bound to http://10.0.0.5:7654) can't unlock the Orin at boot.
+#
+# This reloads the network and DROPS the SSH session as the router's own IP
+# changes ({{ ansible_host }} → {{ lan_gateway }}). It is intentionally the
+# last task in the role so everything above runs over a live connection.
+# Reconnect at {{ lan_gateway }}; on a re-run, point the inventory there too
+# (it still lists the pre-move address). ignore_errors because the connection
+# drop is expected, not a failure.
+- name: Set LAN address on the fleet subnet (reloads network — drops SSH, gateway only)
+  when: "'gateways' in group_names"
+  raw: |
+    uci set network.lan.ipaddr='{{ lan_gateway }}'
+    uci set network.lan.netmask='{{ lan_netmask }}'
+    uci commit network
+    /etc/init.d/network reload
+  ignore_errors: true
