@@ -1,14 +1,17 @@
 ---
-wifi_ssid: "MyHome_10G"
-# The Wi-Fi passphrase must never sit in git — it lives in openwrt-secrets
-# (sops/age, top-level key `wifi_pass`; add via `just secrets::edit secrets.yaml`).
-# Lazy lookup: only evaluated by tasks that actually use it, so provisioning
-# still works before the key exists (falls back to CHANGE-ME).
-wifi_pass: >-
-  {{ ((lookup('community.sops.sops',
-              playbook_dir ~ '/../../openwrt-secrets/secrets.yaml',
-              empty_on_not_found=true) or '{}')
-      | from_yaml).wifi_pass | default('CHANGE-ME', true) }}
+# ---------------------------------------------------------------------------
+# Secret-relevant values (SSID, passphrase, static-lease MACs) live in
+# openwrt-secrets/ansible-vars.yaml (sops/age) — this repo is public, that
+# one is not. The lookup is lazy: only tasks that reference these vars
+# trigger a decrypt (YubiKey must be present, same as the firmware build).
+# Edit with: just secrets::edit ansible-vars.yaml
+# ---------------------------------------------------------------------------
+_secret_vars: >-
+  {{ lookup('community.sops.sops',
+            playbook_dir ~ '/../../openwrt-secrets/ansible-vars.yaml')
+     | from_yaml }}
+wifi_ssid: "{{ _secret_vars.wifi_ssid }}"
+wifi_pass: "{{ _secret_vars.wifi_pass }}"
 roaming_id: "1234" # 802.11r Domain
 timezone: "Europe/Dublin"
 
@@ -31,23 +34,9 @@ adguard_ip: "10.0.0.21" # hass-pi — handed to DHCP clients as their resolver (
 # hosts wandered off 10.0.0.5 and the Orin's clevis (bound to
 # http://10.0.0.5:7654) could no longer auto-unlock LUKS.
 #
-# STATUS / TODO before this is usable:
-#   1. ✅ Consumed — roles/router renders these into UCI dhcp host sections and
-#      hands clients AdGuard via DHCP option 6 (gateway hosts only). Applied on
-#      `just deployment::router-provision` once the OpenWrt router is in place.
-#   2. `mac` is a placeholder — read the workstation's REAL MAC with
-#      `cat /sys/class/net/wlo1/address` AFTER `just apply` flips
-#      cloned-mac-address=permanent (today it shows the randomized
-#      02:b5:08:b9:3f:97, not the factory MAC).
-#   3. Subnet check — inventory.nix puts the OpenWrt LAN on 192.168.1.x while
-#      Tang/clevis currently lives on 10.0.0.0/16. If the OpenWrt LAN is NOT
-#      10.0.0.0/16, both the `ip` below AND the Orin's clevis binding must move
-#      to the new subnet together.
-static_leases:
-  # nixos-nvme: workstation — hosts Tang for the Orin's headless LUKS unlock.
-  # MAC is the wlo1 factory MAC (confirmed 2026-05-30 after
-  # cloned-mac-address=permanent). Currently reserved on the Netgear Orbi;
-  # migrate this lease to OpenWrt when it replaces the Orbi.
-  - name: nixos-nvme
-    ip: "10.0.0.5"
-    mac: "b0:dc:ef:cd:37:73"
+# The lease list itself (names, IPs, MACs) lives in openwrt-secrets/
+# ansible-vars.yaml — MACs are device fingerprints and stay out of this
+# public repo. Subnet check still applies: if the OpenWrt LAN is NOT
+# 10.0.0.0/16, both the lease IPs AND the Orin's clevis binding must move
+# to the new subnet together.
+static_leases: "{{ _secret_vars.static_leases }}"
