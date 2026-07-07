@@ -24,9 +24,10 @@ adguard_ip: "10.0.0.21"
 # ---------------------------------------------------------------------------
 # VLAN-segmented 10.x — SOURCE OF TRUTH for the network role (to be built).
 # Design + firewall matrix: ../../../docs/NETWORK_PLAN.md.
-# The fleet (Tang 10.0.0.5, AdGuard 10.0.0.21, headless-unlock hosts) all live
-# in the `infra` VLAN, so clevis LUKS unlock stays within-zone. Do NOT move
-# Tang or an unlock host out of infra without moving the clevis binding.
+# The fleet — the Tang MESH (every capable host: .5/.12/.21/.22/nasbook…),
+# AdGuard 10.0.0.21, and the headless-unlock hosts — all live in the `infra`
+# VLAN. Clevis unlock is SSS t=1 (any one Tang server unlocks), so it stays
+# within-zone. Keep each unlock host in the same zone as ≥1 of its Tang servers.
 # `wan: true` = internet allowed; `reach` = other zones this VLAN may initiate
 # to (dns = AdGuard :53/:853 only). Enforced by the firewall role.
 # ---------------------------------------------------------------------------
