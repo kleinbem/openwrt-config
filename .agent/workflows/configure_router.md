@@ -14,7 +14,7 @@ To apply configuration changes to a router:
 
    ```bash
    just configure <host_name>
-   # Example: just configure router-a
+   # Example: just configure core-gateway
    ```
 
 3. **Verify**:

@@ -56,9 +56,10 @@
     enabled: true
     state: started
 
-# Setup the LXC Host Environment (Only on Router B)
-- name: Setup LXC Host Config (Router B)
-  when: inventory_hostname == 'router-b'
+# Setup the LXC Host Environment (hosts with the lxc-host inventory tag —
+# currently ap-upstairs, whose NVMe holds /srv/lxc)
+- name: Setup LXC Host Config
+  when: "'lxc_hosts' in group_names"
   block:
     - name: Ensure NVMe mount point exists
       ansible.builtin.file:

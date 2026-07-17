@@ -145,10 +145,10 @@ port_maps:
   gateways: # core-gateway, downstairs
     trunk: [sfp2]
     untagged: { lan1: infra, lan2: trusted, lan3: cameras } # cameras = wired cams
-  access_points: # mesh-node, upstairs
+  access_points: # ap-upstairs (and future ap-<location> extenders)
     trunk: [sfp2]
     untagged: { lan1: infra, lan2: trusted, lan3: cameras }
-ap_mgmt_ip: "10.0.0.2" # mesh-node's address on the infra VLAN
+ap_mgmt_ip: "10.0.0.2" # ap-upstairs' address on the infra VLAN
 
 # ---------------------------------------------------------------------------
 # Static DHCP reservations

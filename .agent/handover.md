@@ -12,8 +12,8 @@
 
 | Hostname | Role | IP | HW | OS |
 | :--- | :--- | :--- | :--- | :--- |
-| `router-a` | Gateway / Edge | 192.168.1.1 | BPI-R4 | OpenWrt (FrankW) |
-| `router-b` | AP / App Server | 192.168.1.2 | BPI-R4 | OpenWrt (FrankW) |
+| `core-gateway` | Gateway / Edge | 10.0.0.1 (bench: 192.168.1.1) | BPI-R4 | OpenWrt (pinned official, openwrt-builder) |
+| `ap-upstairs` | AP / LXC host | 10.0.0.2 (bench: 192.168.1.2) | BPI-R4 | OpenWrt (pinned official, openwrt-builder) |
 | `brain` | Edge Intelligence | DHCP | LXC Container | NixOS (ARM64) |
 
 ## Tech Stack Rules
@@ -23,13 +23,13 @@
     - Python IS available on these routers (installed via `openwrt-builder`), so prefer standard modules (`copy`, `file`, `systemd`) where possible.
 2. **NixOS (The Brain):**
     - Target Architecture: `aarch64-linux` (Cross-compiled from x86).
-    - Host: Router B (NVMe storage at `/srv/lxc`).
+    - Host: ap-upstairs (NVMe storage at `/srv/lxc`).
     - **Podman:** Enabled inside NixOS (Nested Virtualization).
 
 ## Configuration Targets
 
 1. **Network:** 10Gbps SFP+ Backhaul, VLANs (Home, Guest, IoT), 802.11r Roaming (DAWN).
-2. **Storage:** Format and mount NVMe on `router-b` for LXC storage.
+2. **Storage:** Format and mount NVMe on `ap-upstairs` for LXC storage.
 3. **Services (NixOS):** AdGuard Home, Tailscale, Home Assistant, Prometheus.
 
 ## Immediate Next Tasks for AI

@@ -20,13 +20,13 @@ just list-hosts
 ### Configure a Specific Router
 
 ```bash
-just configure router-a
+just configure core-gateway
 ```
 
 ### Dry Run (Check Mode)
 
 ```bash
-just check router-b
+just check ap-upstairs
 ```
 
 ## Directory Structure
