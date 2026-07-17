@@ -9,11 +9,3 @@
     - router # exporter/LXC/leases (+ flat LAN move when segmentation is off)
     - role: network # LAST: terminal network restart drops SSH (mgmt IP → infra VLAN)
       when: vlan_segmentation_live
-
-# 2. Configure the VIRTUAL Brains (NixOS)
-# Note: Ansible just triggers the rebuild or manages simple keys here.
-- name: Verify Brain Connectivity
-  hosts: brains
-  tasks:
-    - name: Ping
-      ansible.builtin.ping:

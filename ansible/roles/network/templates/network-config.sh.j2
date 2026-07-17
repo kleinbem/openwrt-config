@@ -60,7 +60,12 @@ uci set network.{{ vlan.name }}.proto='none'
 uci commit network
 {% if is_gw %}
 
-# --- DHCP: pool per VLAN, AdGuard handed out via option 6 -----------------
+# --- DHCP: pool per VLAN; resolvers via option 6 --------------------------
+# Primary = AdGuard (filtered). Fallback = this gateway's own dnsmasq
+# (unfiltered, forwards to WAN resolvers) so the LAN keeps resolving when
+# hass-pi is down. The fallback is the VLAN's own gateway IP — within-zone,
+# so no extra cross-zone firewall opening (restricted zones get an input
+# allow on 53 below).
 uci -q delete dhcp.lan || true
 {% for vlan in vlans %}
 uci set dhcp.{{ vlan.name }}=dhcp
@@ -69,7 +74,7 @@ uci set dhcp.{{ vlan.name }}.start='{{ vlan.dhcp.start }}'
 uci set dhcp.{{ vlan.name }}.limit='{{ vlan.dhcp.limit }}'
 uci set dhcp.{{ vlan.name }}.leasetime='12h'
 uci -q delete dhcp.{{ vlan.name }}.dhcp_option || true
-uci add_list dhcp.{{ vlan.name }}.dhcp_option='6,{{ adguard_ip }}'
+uci add_list dhcp.{{ vlan.name }}.dhcp_option='6,{{ adguard_ip }},{{ vlan.gateway }}'
 {% endfor %}
 uci commit dhcp
 
@@ -115,7 +120,8 @@ uci set firewall.fwd_{{ vlan.name }}_wan.dest='wan'
 {% endif %}
 {% endfor %}
 
-# Restricted zones (input REJECT) still need DHCP from the router, and ping
+# Restricted zones (input REJECT) still need DHCP from the router, the
+# fallback-DNS on the router itself (option 6 secondary above), and ping
 # for diagnostics.
 {% for vlan in vlans if vlan.name not in ["infra", "trusted"] %}
 uci set firewall.rule_dhcp_{{ vlan.name }}=rule
@@ -124,6 +130,14 @@ uci set firewall.rule_dhcp_{{ vlan.name }}.src='{{ vlan.name }}'
 uci set firewall.rule_dhcp_{{ vlan.name }}.proto='udp'
 uci set firewall.rule_dhcp_{{ vlan.name }}.dest_port='67'
 uci set firewall.rule_dhcp_{{ vlan.name }}.target='ACCEPT'
+uci set firewall.rule_dnsfb_{{ vlan.name }}=rule
+uci set firewall.rule_dnsfb_{{ vlan.name }}.name='Allow-DNS-fallback-{{ vlan.name }}'
+uci set firewall.rule_dnsfb_{{ vlan.name }}.src='{{ vlan.name }}'
+uci -q delete firewall.rule_dnsfb_{{ vlan.name }}.proto || true
+uci add_list firewall.rule_dnsfb_{{ vlan.name }}.proto='tcp'
+uci add_list firewall.rule_dnsfb_{{ vlan.name }}.proto='udp'
+uci set firewall.rule_dnsfb_{{ vlan.name }}.dest_port='53'
+uci set firewall.rule_dnsfb_{{ vlan.name }}.target='ACCEPT'
 uci set firewall.rule_ping_{{ vlan.name }}=rule
 uci set firewall.rule_ping_{{ vlan.name }}.name='Allow-Ping-{{ vlan.name }}'
 uci set firewall.rule_ping_{{ vlan.name }}.src='{{ vlan.name }}'

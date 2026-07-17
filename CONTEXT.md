@@ -10,7 +10,7 @@ This repository manages the **runtime configuration** of OpenWrt routers using A
 
 ## Key Files
 
-- `ansible/inventory.ini`: Defines groups (routers, brains) and host variables.
+- `ansible/inventory.ini`: Defines groups (routers, gateways, access_points, lxc_hosts) and host variables.
 - `ansible/site.yml`: The main playbook.
 - `Justfile`: Automation commands (e.g., `just configure`).
 
