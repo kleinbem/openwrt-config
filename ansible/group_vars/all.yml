@@ -44,14 +44,14 @@ wifi_networks:
     ssid: "{{ wifi_ssid }}-IoT"
     key: "{{ _secret_vars.wifi_pass_iot }}"
     network: iot
-    bands: [2g]
+    bands: [2g, 5g] # 2.4 mandatory (2.4-only IoT gear), 5 for the capable ones
     encryption: sae-mixed
     ft: false
   - name: cameras
     ssid: "{{ wifi_ssid }}-Cam"
     key: "{{ _secret_vars.wifi_pass_cameras }}"
     network: cameras
-    bands: [2g]
+    bands: [2g, 5g] # wifi cams are usually 2.4-only, but allow 5
     encryption: sae-mixed
     ft: false
   - name: guest
