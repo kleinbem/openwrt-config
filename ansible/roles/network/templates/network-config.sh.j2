@@ -1,0 +1,150 @@
+#!/bin/sh
+# Rendered by roles/network — do not edit on the router.
+# Builds the VLAN-segmented 10.x from group_vars `vlans` + `port_maps`
+# (design + firewall matrix: docs/NETWORK_PLAN.md).
+# Commits only — the network restart that applies the new addressing (and
+# drops SSH) is a separate, terminal Ansible task.
+set -e
+{% set is_gw = 'gateways' in group_names %}
+{% set pm = port_maps.gateways if is_gw else port_maps.access_points %}
+
+# --- bridge device: all access ports + the tagged trunk -------------------
+BR=$(uci show network | sed -n "s/^network\.\([^.=]*\)\.name='br-lan'$/\1/p" | head -n1)
+if [ -z "$BR" ]; then
+  BR=$(uci add network device)
+  uci set "network.$BR.name"='br-lan'
+fi
+uci set "network.$BR.type"='bridge'
+uci set "network.$BR.vlan_filtering"='1'
+uci -q delete "network.$BR.ports" || true
+{% for port in (pm.untagged.keys() | list) + pm.trunk %}
+uci add_list "network.$BR.ports"='{{ port }}'
+{% endfor %}
+
+# --- bridge-vlans: untagged access ports (+PVID) + tagged trunk -----------
+while uci -q delete network.@bridge-vlan[0]; do :; done
+{% for vlan in vlans %}
+S=$(uci add network bridge-vlan)
+uci set "network.$S.device"='br-lan'
+uci set "network.$S.vlan"='{{ vlan.id }}'
+{% for port, zone in pm.untagged.items() if zone == vlan.name %}
+uci add_list "network.$S.ports"='{{ port }}:u*'
+{% endfor %}
+{% for port in pm.trunk %}
+uci add_list "network.$S.ports"='{{ port }}:t'
+{% endfor %}
+{% endfor %}
+
+# --- interfaces: one per VLAN (replaces the flat `lan`) -------------------
+uci -q delete network.lan || true
+{% for vlan in vlans %}
+uci set network.{{ vlan.name }}=interface
+uci set network.{{ vlan.name }}.device='br-lan.{{ vlan.id }}'
+{% if is_gw %}
+uci set network.{{ vlan.name }}.proto='static'
+uci set network.{{ vlan.name }}.ipaddr='{{ vlan.gateway }}'
+uci set network.{{ vlan.name }}.netmask='255.255.255.0'
+{% elif vlan.name == 'infra' %}
+# AP management address — routes + resolves via the gateway/AdGuard.
+uci set network.{{ vlan.name }}.proto='static'
+uci set network.{{ vlan.name }}.ipaddr='{{ ap_mgmt_ip }}'
+uci set network.{{ vlan.name }}.netmask='255.255.255.0'
+uci set network.{{ vlan.name }}.gateway='{{ vlan.gateway }}'
+uci -q delete network.{{ vlan.name }}.dns || true
+uci add_list network.{{ vlan.name }}.dns='{{ adguard_ip }}'
+{% else %}
+# AP is a dumb bridge for this VLAN — L2 only, no address.
+uci set network.{{ vlan.name }}.proto='none'
+{% endif %}
+{% endfor %}
+uci commit network
+{% if is_gw %}
+
+# --- DHCP: pool per VLAN, AdGuard handed out via option 6 -----------------
+uci -q delete dhcp.lan || true
+{% for vlan in vlans %}
+uci set dhcp.{{ vlan.name }}=dhcp
+uci set dhcp.{{ vlan.name }}.interface='{{ vlan.name }}'
+uci set dhcp.{{ vlan.name }}.start='{{ vlan.dhcp.start }}'
+uci set dhcp.{{ vlan.name }}.limit='{{ vlan.dhcp.limit }}'
+uci set dhcp.{{ vlan.name }}.leasetime='12h'
+uci -q delete dhcp.{{ vlan.name }}.dhcp_option || true
+uci add_list dhcp.{{ vlan.name }}.dhcp_option='6,{{ adguard_ip }}'
+{% endfor %}
+uci commit dhcp
+
+# --- firewall: zone per VLAN + the NETWORK_PLAN matrix --------------------
+# The anonymous default lan/wan zones + forwardings are replaced by NAMED
+# sections (idempotent on re-run). Default @rule entries (Allow-DHCP-Renew,
+# Allow-Ping, … — all src wan) are kept; they bind to the new wan zone by name.
+while uci -q delete firewall.@zone[0]; do :; done
+while uci -q delete firewall.@forwarding[0]; do :; done
+
+uci set firewall.zn_wan=zone
+uci set firewall.zn_wan.name='wan'
+uci -q delete firewall.zn_wan.network || true
+uci add_list firewall.zn_wan.network='wan'
+uci add_list firewall.zn_wan.network='wan6'
+uci set firewall.zn_wan.input='REJECT'
+uci set firewall.zn_wan.output='ACCEPT'
+uci set firewall.zn_wan.forward='REJECT'
+uci set firewall.zn_wan.masq='1'
+uci set firewall.zn_wan.mtu_fix='1'
+{% for vlan in vlans %}
+
+uci set firewall.zn_{{ vlan.name }}=zone
+uci set firewall.zn_{{ vlan.name }}.name='{{ vlan.name }}'
+uci -q delete firewall.zn_{{ vlan.name }}.network || true
+uci add_list firewall.zn_{{ vlan.name }}.network='{{ vlan.name }}'
+uci set firewall.zn_{{ vlan.name }}.input='{{ "ACCEPT" if vlan.name in ["infra", "trusted"] else "REJECT" }}'
+uci set firewall.zn_{{ vlan.name }}.output='ACCEPT'
+uci set firewall.zn_{{ vlan.name }}.forward='REJECT'
+{% endfor %}
+
+# Zone→zone forwardings from each VLAN's reach_out (+ WAN where allowed).
+{% for vlan in vlans %}
+{% for dest in vlan.reach_out | default([]) if dest != 'dns' %}
+uci set firewall.fwd_{{ vlan.name }}_{{ dest }}=forwarding
+uci set firewall.fwd_{{ vlan.name }}_{{ dest }}.src='{{ vlan.name }}'
+uci set firewall.fwd_{{ vlan.name }}_{{ dest }}.dest='{{ dest }}'
+{% endfor %}
+{% if vlan.wan %}
+uci set firewall.fwd_{{ vlan.name }}_wan=forwarding
+uci set firewall.fwd_{{ vlan.name }}_wan.src='{{ vlan.name }}'
+uci set firewall.fwd_{{ vlan.name }}_wan.dest='wan'
+{% endif %}
+{% endfor %}
+
+# Restricted zones (input REJECT) still need DHCP from the router, and ping
+# for diagnostics.
+{% for vlan in vlans if vlan.name not in ["infra", "trusted"] %}
+uci set firewall.rule_dhcp_{{ vlan.name }}=rule
+uci set firewall.rule_dhcp_{{ vlan.name }}.name='Allow-DHCP-{{ vlan.name }}'
+uci set firewall.rule_dhcp_{{ vlan.name }}.src='{{ vlan.name }}'
+uci set firewall.rule_dhcp_{{ vlan.name }}.proto='udp'
+uci set firewall.rule_dhcp_{{ vlan.name }}.dest_port='67'
+uci set firewall.rule_dhcp_{{ vlan.name }}.target='ACCEPT'
+uci set firewall.rule_ping_{{ vlan.name }}=rule
+uci set firewall.rule_ping_{{ vlan.name }}.name='Allow-Ping-{{ vlan.name }}'
+uci set firewall.rule_ping_{{ vlan.name }}.src='{{ vlan.name }}'
+uci set firewall.rule_ping_{{ vlan.name }}.proto='icmp'
+uci set firewall.rule_ping_{{ vlan.name }}.icmp_type='echo-request'
+uci set firewall.rule_ping_{{ vlan.name }}.target='ACCEPT'
+{% endfor %}
+
+# DNS exception: `dns` in reach_out = may reach AdGuard (and only AdGuard)
+# in infra on 53 + DoT 853 — every VLAN resolves without opening infra.
+{% for vlan in vlans if 'dns' in vlan.reach_out | default([]) %}
+uci set firewall.rule_dns_{{ vlan.name }}=rule
+uci set firewall.rule_dns_{{ vlan.name }}.name='Allow-DNS-{{ vlan.name }}'
+uci set firewall.rule_dns_{{ vlan.name }}.src='{{ vlan.name }}'
+uci set firewall.rule_dns_{{ vlan.name }}.dest='infra'
+uci set firewall.rule_dns_{{ vlan.name }}.dest_ip='{{ adguard_ip }}'
+uci -q delete firewall.rule_dns_{{ vlan.name }}.proto || true
+uci add_list firewall.rule_dns_{{ vlan.name }}.proto='tcp'
+uci add_list firewall.rule_dns_{{ vlan.name }}.proto='udp'
+uci set firewall.rule_dns_{{ vlan.name }}.dest_port='53 853'
+uci set firewall.rule_dns_{{ vlan.name }}.target='ACCEPT'
+{% endfor %}
+uci commit firewall
+{% endif %}

@@ -14,7 +14,8 @@
 - name: Configure fleet gateway DHCP + DNS handoff
   when: "'gateways' in group_names"
   block:
-    - name: Hand DHCP clients AdGuard as their DNS resolver (option 6)
+    - name: Hand DHCP clients AdGuard as their DNS resolver (option 6, flat interim only)
+      when: not vlan_segmentation_live # segmented: roles/network sets option 6 per VLAN
       raw: |
         uci -q delete dhcp.lan.dhcp_option
         uci add_list dhcp.lan.dhcp_option='6,{{ adguard_ip }}'
@@ -93,7 +94,9 @@
 # (it still lists the pre-move address). ignore_errors because the connection
 # drop is expected, not a failure.
 - name: Set LAN address on the fleet subnet (reloads network — drops SSH, gateway only)
-  when: "'gateways' in group_names"
+  # Flat interim path only — under segmentation, roles/network owns all
+  # addressing and is the terminal, SSH-dropping step instead.
+  when: "'gateways' in group_names and not vlan_segmentation_live"
   raw: |
     uci set network.lan.ipaddr='{{ lan_gateway }}'
     uci set network.lan.netmask='{{ lan_netmask }}'

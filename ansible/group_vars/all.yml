@@ -125,10 +125,30 @@ vlans:
 # (unsegmented) gateway.
 lan_gateway: "10.0.0.1"
 lan_netmask: "255.255.0.0"
-# The wifi role attaches every SSID to `lan` while this is false; flip to
-# true when the network role lands and the per-VLAN interfaces exist, and
-# SSIDs move onto their target VLANs (wifi_networks[].network).
-vlan_segmentation_live: false
+# Master switch between the flat interim path and full segmentation.
+# true (default since roles/network landed 2026-07-17): roles/network builds
+# bridge-VLANs + per-VLAN DHCP + the firewall matrix, and the wifi role
+# attaches each SSID to its target VLAN. Rollback = set false: the wifi role
+# pins every SSID to flat `lan` and the router role's interim LAN-move task
+# takes over again.
+vlan_segmentation_live: true
+
+# ---------------------------------------------------------------------------
+# Physical port → zone map (roles/network) — decided 2026-07-17.
+# ---------------------------------------------------------------------------
+# WAN stays on the uci-defaults iface (inventory wan_iface=eth1; NOT managed
+# here). The SFP+ link between the two BPI-R4s is a tagged trunk carrying all
+# VLANs. DSA port names (lan1…, sfp2) are the expected BPI-R4 names — bench-
+# verify once with `ls /sys/class/net` on the flashed board and adjust here
+# if the hardware disagrees.
+port_maps:
+  gateways: # core-gateway, downstairs
+    trunk: [sfp2]
+    untagged: { lan1: infra, lan2: trusted, lan3: cameras } # cameras = wired cams
+  access_points: # mesh-node, upstairs
+    trunk: [sfp2]
+    untagged: { lan1: infra, lan2: trusted, lan3: cameras }
+ap_mgmt_ip: "10.0.0.2" # mesh-node's address on the infra VLAN
 
 # ---------------------------------------------------------------------------
 # Static DHCP reservations

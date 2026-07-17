@@ -5,8 +5,10 @@
   gather_facts: true
   roles:
     - common
-    - wifi # before router: router's terminal task moves the LAN IP and drops SSH
-    - router
+    - wifi # radios + SSIDs; safe while the connection is up
+    - router # exporter/LXC/leases (+ flat LAN move when segmentation is off)
+    - role: network # LAST: terminal network restart drops SSH (mgmt IP → infra VLAN)
+      when: vlan_segmentation_live
 
 # 2. Configure the VIRTUAL Brains (NixOS)
 # Note: Ansible just triggers the rebuild or manages simple keys here.
