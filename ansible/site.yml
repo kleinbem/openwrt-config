@@ -5,6 +5,7 @@
   gather_facts: true
   roles:
     - common
+    - wifi # before router: router's terminal task moves the LAN IP and drops SSH
     - router
 
 # 2. Configure the VIRTUAL Brains (NixOS)

@@ -1,0 +1,66 @@
+#!/bin/sh
+# Rendered by the wifi role ({{ template_path | default('roles/wifi') }}) — do not edit on the router.
+# Band-aware: discovers whichever radios this board actually has (the BE14000
+# NIC exposes 2g/5g/6g; a board without the module simply has none) and
+# creates each SSID only on its allowed bands. Safe to re-run: the role owns
+# /etc/config/wireless outright and rebuilds every wifi-iface section.
+set -e
+
+# Generate wifi-device sections for any radios not yet in /etc/config/wireless
+# (first boot after flash). No-op when they already exist.
+wifi config >/dev/null 2>&1 || true
+
+# Wipe all existing wifi-iface sections — the SSID layout below is the single
+# source of truth; anything else (firmware defaults, manual LuCI edits) goes.
+while uci -q delete wireless.@wifi-iface[0]; do :; done
+
+RADIOS=$(uci show wireless 2>/dev/null | sed -n 's/^wireless\.\([^.=]*\)=wifi-device$/\1/p')
+if [ -z "$RADIOS" ]; then
+  echo "wifi-config: no radios found — board without Wi-Fi NIC, nothing to do."
+  exit 0
+fi
+
+for radio in $RADIOS; do
+  band=$(uci -q get "wireless.$radio.band")
+  uci set "wireless.$radio.country"='{{ wifi_country }}'
+  uci set "wireless.$radio.channel"='auto'
+  uci set "wireless.$radio.disabled"='0'
+  case "$band" in
+{% for band, htmode in wifi_htmodes.items() %}
+    {{ band }}) uci set "wireless.$radio.htmode"='{{ htmode }}' ;;
+{% endfor %}
+  esac
+
+{% for net in wifi_networks %}
+  # SSID: {{ net.name }} → network '{{ net.network if vlan_segmentation_live else "lan (flat interim; target: " + net.network + ")" }}'
+  case "$band" in {{ net.bands | join('|') }})
+    iface='{{ net.name }}_'"$radio"
+    uci set "wireless.$iface"=wifi-iface
+    uci set "wireless.$iface.device"="$radio"
+    uci set "wireless.$iface.mode"='ap'
+    uci set "wireless.$iface.ssid"={{ net.ssid | quote }}
+    uci set "wireless.$iface.key"={{ net.key | quote }}
+    uci set "wireless.$iface.network"='{{ net.network if vlan_segmentation_live else "lan" }}'
+    if [ "$band" = "6g" ]; then
+      # 6 GHz mandates pure WPA3-SAE + management frame protection.
+      uci set "wireless.$iface.encryption"='sae'
+      uci set "wireless.$iface.ieee80211w"='2'
+    else
+      uci set "wireless.$iface.encryption"='{{ net.encryption }}'
+    fi
+{% if net.ft | default(false) %}
+    # 802.11r fast transition between the two BPI-R4s (same mobility domain).
+    uci set "wireless.$iface.ieee80211r"='1'
+    uci set "wireless.$iface.mobility_domain"='{{ net.mobility_domain }}'
+    uci set "wireless.$iface.ft_over_ds"='0'
+    uci set "wireless.$iface.ft_psk_generate_local"='1'
+{% endif %}
+{% if net.isolate | default(false) %}
+    uci set "wireless.$iface.isolate"='1'
+{% endif %}
+  ;; esac
+{% endfor %}
+done
+
+uci commit wireless
+wifi reload

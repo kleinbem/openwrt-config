@@ -12,8 +12,57 @@ _secret_vars: >-
      | from_yaml }}
 wifi_ssid: "{{ _secret_vars.wifi_ssid }}"
 wifi_pass: "{{ _secret_vars.wifi_pass }}"
-roaming_id: "1234" # 802.11r Domain
+roaming_id: "1234" # 802.11r mobility domain (trusted SSID)
 timezone: "Europe/Dublin"
+
+# ---------------------------------------------------------------------------
+# Wi-Fi radios + SSIDs (roles/wifi) — spec locked 2026-07.
+# ---------------------------------------------------------------------------
+# The main SSID keeps its existing name AND password (clients survive the
+# router swap unchanged); the per-VLAN SSIDs derive their names from it and
+# take NEW passphrases from openwrt-secrets/ansible-vars.yaml
+# (wifi_pass_iot / wifi_pass_guest / wifi_pass_cameras — add via
+# `just secrets::edit ansible-vars.yaml`).
+# `encryption: sae-mixed` = WPA2/WPA3 transition mode; the role forces pure
+# SAE + MFP on 6 GHz (mandated there). Drop a network to psk2 only if a
+# specific device refuses the transition mode.
+# `ft` = 802.11r fast roaming between the two BPI-R4s — off for iot/cameras
+# (cheap clients often mis-handle FT and those devices don't roam anyway).
+wifi_country: "IE"
+# Per-band channel widths for the BE14000 (MT7996, Wi-Fi 7 / EHT).
+wifi_htmodes: { 2g: "EHT20", 5g: "EHT160", 6g: "EHT320" }
+wifi_networks:
+  - name: trusted
+    ssid: "{{ wifi_ssid }}"
+    key: "{{ wifi_pass }}"
+    network: trusted
+    bands: [2g, 5g, 6g]
+    encryption: sae-mixed
+    ft: true
+    mobility_domain: "{{ roaming_id }}"
+  - name: iot
+    ssid: "{{ wifi_ssid }}-IoT"
+    key: "{{ _secret_vars.wifi_pass_iot }}"
+    network: iot
+    bands: [2g]
+    encryption: sae-mixed
+    ft: false
+  - name: cameras
+    ssid: "{{ wifi_ssid }}-Cam"
+    key: "{{ _secret_vars.wifi_pass_cameras }}"
+    network: cameras
+    bands: [2g]
+    encryption: sae-mixed
+    ft: false
+  - name: guest
+    ssid: "{{ wifi_ssid }}-Guest"
+    key: "{{ _secret_vars.wifi_pass_guest }}"
+    network: guest
+    bands: [2g, 5g]
+    encryption: sae-mixed
+    ft: true
+    mobility_domain: "4321" # distinct FT domain — guest must not share keys with trusted
+    isolate: true # guest clients can't see each other
 
 # ---------------------------------------------------------------------------
 # AdGuard resolver — handed to DHCP clients in every VLAN (option 6).
@@ -76,6 +125,10 @@ vlans:
 # (unsegmented) gateway.
 lan_gateway: "10.0.0.1"
 lan_netmask: "255.255.0.0"
+# The wifi role attaches every SSID to `lan` while this is false; flip to
+# true when the network role lands and the per-VLAN interfaces exist, and
+# SSIDs move onto their target VLANs (wifi_networks[].network).
+vlan_segmentation_live: false
 
 # ---------------------------------------------------------------------------
 # Static DHCP reservations

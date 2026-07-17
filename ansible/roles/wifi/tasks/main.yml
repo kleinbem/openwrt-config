@@ -1,0 +1,36 @@
+---
+# ---------------------------------------------------------------------------
+# Wi-Fi radio role — tri-band BE14000 (MT7996) on both BPI-R4s.
+# ---------------------------------------------------------------------------
+# Spec (locked 2026-07): SSID family derived from the existing secret SSID
+# (main network keeps its current name + password so clients survive the
+# router swap), country IE, WPA3/SAE (pure SAE forced on 6 GHz), 802.11r
+# fast roaming between gateway and upstairs AP, DAWN for client steering.
+# SSID→VLAN map + bands live in group_vars/all.yml (`wifi_networks`).
+#
+# The uci logic runs as one rendered shell script instead of per-setting raw
+# tasks: it must discover radios at runtime (a board without the Wi-Fi NIC
+# fitted is a clean no-op) and commit/reload once, atomically.
+- name: Render Wi-Fi uci script
+  ansible.builtin.template:
+    src: wifi-config.sh.j2
+    dest: /tmp/wifi-config.sh
+    mode: "0700"
+  no_log: true # the rendered script embeds SSIDs + passphrases — keep out of logs/--diff
+  diff: false
+
+- name: Apply Wi-Fi configuration (uci commit + wifi reload)
+  raw: sh /tmp/wifi-config.sh
+
+- name: Remove rendered script (contains passphrases)
+  ansible.builtin.file:
+    path: /tmp/wifi-config.sh
+    state: absent
+
+# DAWN (in the firmware image) coordinates the two APs over the LAN and
+# steers clients to the better one; 802.11r above makes that steer fast.
+- name: Enable and start DAWN roaming daemon
+  ansible.builtin.service:
+    name: dawn
+    enabled: true
+    state: started
