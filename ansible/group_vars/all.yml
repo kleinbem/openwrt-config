@@ -13,7 +13,10 @@ _secret_vars: >-
 wifi_ssid: "{{ _secret_vars.wifi_ssid }}"
 wifi_pass: "{{ _secret_vars.wifi_pass }}"
 roaming_id: "1234" # 802.11r mobility domain (trusted SSID)
-timezone: "Europe/Dublin"
+timezone: "Europe/Dublin" # zonename (needs zoneinfo-europe, baked into image)
+# POSIX TZ string for the same zone — always correct even if zoneinfo is
+# ever missing; busybox ntpd/date read this. Europe/Dublin = GMT/IST.
+timezone_posix: "GMT0IST,M3.5.0/1,M10.5.0"
 
 # ---------------------------------------------------------------------------
 # Wi-Fi radios + SSIDs (roles/wifi) — spec locked 2026-07.

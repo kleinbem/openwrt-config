@@ -33,6 +33,25 @@
   when: "'gateways' in group_names"
   raw: /etc/init.d/firewall restart
 
+# mDNS reflector (gateway only — it holds the L3 interfaces in both VLANs;
+# on the AP those VLANs are L2 bridges with no address, so nothing to
+# reflect). Bridges service discovery trusted<->iot.
+- name: Configure mDNS reflector (avahi)
+  when: "'gateways' in group_names"
+  block:
+    - name: Render avahi reflector config
+      ansible.builtin.template:
+        src: avahi-daemon.conf.j2
+        dest: /etc/avahi/avahi-daemon.conf
+        mode: "0644"
+    - name: Enable + restart avahi reflector
+      raw: /etc/init.d/avahi-daemon enable && /etc/init.d/avahi-daemon restart
+
+# NTP server + timezone take effect on the next sysntpd cycle; nudge it now
+# so served time is correct immediately (both hosts).
+- name: Restart sysntpd (apply NTP server / timezone)
+  raw: /etc/init.d/sysntpd restart
+
 # ---------------------------------------------------------------------------
 # TERMINAL TASK — applies the new addressing; DROPS SSH on both hosts as the
 # management IP moves onto the infra VLAN (gateway → 10.0.0.1, AP → .2).

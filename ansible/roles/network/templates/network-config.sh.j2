@@ -59,13 +59,17 @@ uci set network.{{ vlan.name }}.proto='none'
 {% endfor %}
 uci commit network
 {% if is_gw %}
+{% set resolver_zones = ['infra', 'trusted'] %}{# trusted device zones: filtered + unfiltered fallback, no hijack #}
 
 # --- DHCP: pool per VLAN; resolvers via option 6 --------------------------
-# Primary = AdGuard (filtered). Fallback = this gateway's own dnsmasq
-# (unfiltered, forwards to WAN resolvers) so the LAN keeps resolving when
-# hass-pi is down. The fallback is the VLAN's own gateway IP — within-zone,
-# so no extra cross-zone firewall opening (restricted zones get an input
-# allow on 53 below).
+# Two DNS policies by trust level:
+#  • infra/trusted (your devices): AdGuard primary + this gateway's dnsmasq
+#    as unfiltered fallback (VLAN's own gateway IP) — LAN keeps resolving if
+#    hass-pi is down. No hijack; you're trusted.
+#  • iot/cameras/guest (untrusted): AdGuard ONLY — no unfiltered fallback,
+#    and a DNS hijack (firewall, below) forces every :53 query to AdGuard so
+#    hardcoded-resolver gear can't bypass filtering. Trade-off: AdGuard down
+#    = degraded DNS for these zones (acceptable; non-interactive/guest).
 uci -q delete dhcp.lan || true
 {% for vlan in vlans %}
 uci set dhcp.{{ vlan.name }}=dhcp
@@ -74,9 +78,21 @@ uci set dhcp.{{ vlan.name }}.start='{{ vlan.dhcp.start }}'
 uci set dhcp.{{ vlan.name }}.limit='{{ vlan.dhcp.limit }}'
 uci set dhcp.{{ vlan.name }}.leasetime='12h'
 uci -q delete dhcp.{{ vlan.name }}.dhcp_option || true
+{% if vlan.name in resolver_zones %}
 uci add_list dhcp.{{ vlan.name }}.dhcp_option='6,{{ adguard_ip }},{{ vlan.gateway }}'
+{% else %}
+uci add_list dhcp.{{ vlan.name }}.dhcp_option='6,{{ adguard_ip }}'
+{% endif %}
 {% endfor %}
 uci commit dhcp
+
+# --- NTP server: gateway serves time to the whole LAN ---------------------
+# Cameras have NO WAN, so the router is their only clock source; IoT TLS also
+# breaks on bad time. Gateway syncs from the pool (default upstreams) over
+# WAN and re-serves on :123. Restricted zones get an input allow below.
+uci set system.ntp.enabled='1'
+uci set system.ntp.enable_server='1'
+uci commit system
 
 # --- firewall: zone per VLAN + the NETWORK_PLAN matrix --------------------
 # The anonymous default lan/wan zones + forwardings are replaced by NAMED
@@ -120,30 +136,65 @@ uci set firewall.fwd_{{ vlan.name }}_wan.dest='wan'
 {% endif %}
 {% endfor %}
 
-# Restricted zones (input REJECT) still need DHCP from the router, the
-# fallback-DNS on the router itself (option 6 secondary above), and ping
-# for diagnostics.
-{% for vlan in vlans if vlan.name not in ["infra", "trusted"] %}
+# Restricted zones (input REJECT) still need, from the router itself: DHCP,
+# NTP (their only clock — see server above), and ping for diagnostics.
+# DNS is NOT allowed to the router here — it's hijacked to AdGuard (below).
+{% for vlan in vlans if vlan.name not in resolver_zones %}
 uci set firewall.rule_dhcp_{{ vlan.name }}=rule
 uci set firewall.rule_dhcp_{{ vlan.name }}.name='Allow-DHCP-{{ vlan.name }}'
 uci set firewall.rule_dhcp_{{ vlan.name }}.src='{{ vlan.name }}'
 uci set firewall.rule_dhcp_{{ vlan.name }}.proto='udp'
 uci set firewall.rule_dhcp_{{ vlan.name }}.dest_port='67'
 uci set firewall.rule_dhcp_{{ vlan.name }}.target='ACCEPT'
-uci set firewall.rule_dnsfb_{{ vlan.name }}=rule
-uci set firewall.rule_dnsfb_{{ vlan.name }}.name='Allow-DNS-fallback-{{ vlan.name }}'
-uci set firewall.rule_dnsfb_{{ vlan.name }}.src='{{ vlan.name }}'
-uci -q delete firewall.rule_dnsfb_{{ vlan.name }}.proto || true
-uci add_list firewall.rule_dnsfb_{{ vlan.name }}.proto='tcp'
-uci add_list firewall.rule_dnsfb_{{ vlan.name }}.proto='udp'
-uci set firewall.rule_dnsfb_{{ vlan.name }}.dest_port='53'
-uci set firewall.rule_dnsfb_{{ vlan.name }}.target='ACCEPT'
+uci set firewall.rule_ntp_{{ vlan.name }}=rule
+uci set firewall.rule_ntp_{{ vlan.name }}.name='Allow-NTP-{{ vlan.name }}'
+uci set firewall.rule_ntp_{{ vlan.name }}.src='{{ vlan.name }}'
+uci set firewall.rule_ntp_{{ vlan.name }}.proto='udp'
+uci set firewall.rule_ntp_{{ vlan.name }}.dest_port='123'
+uci set firewall.rule_ntp_{{ vlan.name }}.target='ACCEPT'
 uci set firewall.rule_ping_{{ vlan.name }}=rule
 uci set firewall.rule_ping_{{ vlan.name }}.name='Allow-Ping-{{ vlan.name }}'
 uci set firewall.rule_ping_{{ vlan.name }}.src='{{ vlan.name }}'
 uci set firewall.rule_ping_{{ vlan.name }}.proto='icmp'
 uci set firewall.rule_ping_{{ vlan.name }}.icmp_type='echo-request'
 uci set firewall.rule_ping_{{ vlan.name }}.target='ACCEPT'
+{% endfor %}
+
+# mDNS reflector (avahi, gateway): trusted must be able to send mDNS to the
+# router on iot too, so the reflector bridges discovery trusted↔iot. trusted
+# input is already ACCEPT; iot needs an explicit :5353 allow.
+uci set firewall.rule_mdns_iot=rule
+uci set firewall.rule_mdns_iot.name='Allow-mDNS-iot'
+uci set firewall.rule_mdns_iot.src='iot'
+uci set firewall.rule_mdns_iot.proto='udp'
+uci set firewall.rule_mdns_iot.dest_port='5353'
+uci set firewall.rule_mdns_iot.target='ACCEPT'
+
+# Management plane = infra only. trusted has input ACCEPT (for DNS/DHCP/NTP)
+# but must NOT administer the router — reject SSH/HTTP/HTTPS from trusted.
+# iot/cameras/guest already can't (zone input REJECT). Admin from infra
+# (the workstation lives there).
+uci set firewall.rule_noadmin_trusted=rule
+uci set firewall.rule_noadmin_trusted.name='Deny-mgmt-from-trusted'
+uci set firewall.rule_noadmin_trusted.src='trusted'
+uci set firewall.rule_noadmin_trusted.proto='tcp'
+uci set firewall.rule_noadmin_trusted.dest_port='22 80 443'
+uci set firewall.rule_noadmin_trusted.target='REJECT'
+
+# DNS hijack: force every :53 query from the untrusted zones to AdGuard so
+# gear with a hardcoded resolver (8.8.8.8, …) can't bypass filtering. The
+# DNAT'd flow rides the existing Allow-DNS-<zone> forward to AdGuard.
+{% for vlan in vlans if vlan.name not in resolver_zones %}
+uci set firewall.redir_dns_{{ vlan.name }}=redirect
+uci set firewall.redir_dns_{{ vlan.name }}.name='Hijack-DNS-{{ vlan.name }}'
+uci set firewall.redir_dns_{{ vlan.name }}.src='{{ vlan.name }}'
+uci set firewall.redir_dns_{{ vlan.name }}.src_dport='53'
+uci set firewall.redir_dns_{{ vlan.name }}.dest_ip='{{ adguard_ip }}'
+uci set firewall.redir_dns_{{ vlan.name }}.dest_port='53'
+uci -q delete firewall.redir_dns_{{ vlan.name }}.proto || true
+uci add_list firewall.redir_dns_{{ vlan.name }}.proto='udp'
+uci add_list firewall.redir_dns_{{ vlan.name }}.proto='tcp'
+uci set firewall.redir_dns_{{ vlan.name }}.target='DNAT'
 {% endfor %}
 
 # DNS exception: `dns` in reach_out = may reach AdGuard (and only AdGuard)

@@ -1,3 +1,13 @@
 ---
 - name: Set System Hostname
   raw: uci set system.@system[0].hostname="{{ inventory_hostname }}" && uci commit system
+
+# Timezone: both the human-readable zonename (needs zoneinfo-europe, baked
+# into the image) and the POSIX TZ string (busybox reads this directly).
+# Correct time matters on the cameras/iot VLANs — cameras have no WAN, so
+# the router's NTP (below) is their only clock source.
+- name: Set timezone
+  raw: |
+    uci set system.@system[0].zonename='{{ timezone }}'
+    uci set system.@system[0].timezone='{{ timezone_posix }}'
+    uci commit system
