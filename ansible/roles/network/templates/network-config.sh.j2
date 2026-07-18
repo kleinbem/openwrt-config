@@ -59,17 +59,15 @@ uci set network.{{ vlan.name }}.proto='none'
 {% endfor %}
 uci commit network
 {% if is_gw %}
-{% set resolver_zones = ['infra', 'trusted'] %}{# trusted device zones: filtered + unfiltered fallback, no hijack #}
 
-# --- DHCP: pool per VLAN; resolvers via option 6 --------------------------
-# Two DNS policies by trust level:
-#  • infra/trusted (your devices): AdGuard primary + this gateway's dnsmasq
-#    as unfiltered fallback (VLAN's own gateway IP) — LAN keeps resolving if
-#    hass-pi is down. No hijack; you're trusted.
-#  • iot/cameras/guest (untrusted): AdGuard ONLY — no unfiltered fallback,
-#    and a DNS hijack (firewall, below) forces every :53 query to AdGuard so
-#    hardcoded-resolver gear can't bypass filtering. Trade-off: AdGuard down
-#    = degraded DNS for these zones (acceptable; non-interactive/guest).
+# --- DHCP: pool per VLAN; resolver via option 6, per the `dns` tier --------
+#  • trusted  → AdGuard primary + this VLAN's own gateway (unfiltered) as
+#    fallback, so the LAN keeps resolving if hass-pi is down. No hijack.
+#  • filtered → AdGuard ONLY — no unfiltered fallback; a DNS hijack (below)
+#    forces every :53 to AdGuard so hardcoded resolvers can't bypass it.
+#    Trade-off: AdGuard down = degraded DNS for these zones (accepted).
+#  • local    → the router's own dnsmasq (unfiltered) ONLY; no AdGuard, no
+#    hijack — so a corporate VPN's own DNS is respected (work laptop).
 uci -q delete dhcp.lan || true
 {% for vlan in vlans %}
 uci set dhcp.{{ vlan.name }}=dhcp
@@ -78,8 +76,10 @@ uci set dhcp.{{ vlan.name }}.start='{{ vlan.dhcp.start }}'
 uci set dhcp.{{ vlan.name }}.limit='{{ vlan.dhcp.limit }}'
 uci set dhcp.{{ vlan.name }}.leasetime='12h'
 uci -q delete dhcp.{{ vlan.name }}.dhcp_option || true
-{% if vlan.name in resolver_zones %}
+{% if vlan.dns == 'trusted' %}
 uci add_list dhcp.{{ vlan.name }}.dhcp_option='6,{{ adguard_ip }},{{ vlan.gateway }}'
+{% elif vlan.dns == 'local' %}
+uci add_list dhcp.{{ vlan.name }}.dhcp_option='6,{{ vlan.gateway }}'
 {% else %}
 uci add_list dhcp.{{ vlan.name }}.dhcp_option='6,{{ adguard_ip }}'
 {% endif %}
@@ -117,7 +117,7 @@ uci set firewall.zn_{{ vlan.name }}=zone
 uci set firewall.zn_{{ vlan.name }}.name='{{ vlan.name }}'
 uci -q delete firewall.zn_{{ vlan.name }}.network || true
 uci add_list firewall.zn_{{ vlan.name }}.network='{{ vlan.name }}'
-uci set firewall.zn_{{ vlan.name }}.input='{{ "ACCEPT" if vlan.name in ["infra", "trusted"] else "REJECT" }}'
+uci set firewall.zn_{{ vlan.name }}.input='{{ "ACCEPT" if vlan.dns == "trusted" else "REJECT" }}'
 uci set firewall.zn_{{ vlan.name }}.output='ACCEPT'
 uci set firewall.zn_{{ vlan.name }}.forward='REJECT'
 {% endfor %}
@@ -136,10 +136,11 @@ uci set firewall.fwd_{{ vlan.name }}_wan.dest='wan'
 {% endif %}
 {% endfor %}
 
-# Restricted zones (input REJECT) still need, from the router itself: DHCP,
-# NTP (their only clock — see server above), and ping for diagnostics.
-# DNS is NOT allowed to the router here — it's hijacked to AdGuard (below).
-{% for vlan in vlans if vlan.name not in resolver_zones %}
+# Input-REJECT zones (everything except the `trusted` DNS tier) still need,
+# from the router itself: DHCP, NTP (their only clock — see server above),
+# and ping. For `local`-DNS zones (work) also allow :53 to the router — they
+# resolve via the gateway's own unfiltered dnsmasq (no AdGuard, no hijack).
+{% for vlan in vlans if vlan.dns != 'trusted' %}
 uci set firewall.rule_dhcp_{{ vlan.name }}=rule
 uci set firewall.rule_dhcp_{{ vlan.name }}.name='Allow-DHCP-{{ vlan.name }}'
 uci set firewall.rule_dhcp_{{ vlan.name }}.src='{{ vlan.name }}'
@@ -152,6 +153,16 @@ uci set firewall.rule_ntp_{{ vlan.name }}.src='{{ vlan.name }}'
 uci set firewall.rule_ntp_{{ vlan.name }}.proto='udp'
 uci set firewall.rule_ntp_{{ vlan.name }}.dest_port='123'
 uci set firewall.rule_ntp_{{ vlan.name }}.target='ACCEPT'
+{% if vlan.dns == 'local' %}
+uci set firewall.rule_dnslocal_{{ vlan.name }}=rule
+uci set firewall.rule_dnslocal_{{ vlan.name }}.name='Allow-DNS-local-{{ vlan.name }}'
+uci set firewall.rule_dnslocal_{{ vlan.name }}.src='{{ vlan.name }}'
+uci -q delete firewall.rule_dnslocal_{{ vlan.name }}.proto || true
+uci add_list firewall.rule_dnslocal_{{ vlan.name }}.proto='tcp'
+uci add_list firewall.rule_dnslocal_{{ vlan.name }}.proto='udp'
+uci set firewall.rule_dnslocal_{{ vlan.name }}.dest_port='53'
+uci set firewall.rule_dnslocal_{{ vlan.name }}.target='ACCEPT'
+{% endif %}
 uci set firewall.rule_ping_{{ vlan.name }}=rule
 uci set firewall.rule_ping_{{ vlan.name }}.name='Allow-Ping-{{ vlan.name }}'
 uci set firewall.rule_ping_{{ vlan.name }}.src='{{ vlan.name }}'
@@ -181,10 +192,11 @@ uci set firewall.rule_noadmin_trusted.proto='tcp'
 uci set firewall.rule_noadmin_trusted.dest_port='22 80 443'
 uci set firewall.rule_noadmin_trusted.target='REJECT'
 
-# DNS hijack: force every :53 query from the untrusted zones to AdGuard so
+# DNS hijack: force every :53 query from the `filtered` zones to AdGuard so
 # gear with a hardcoded resolver (8.8.8.8, …) can't bypass filtering. The
-# DNAT'd flow rides the existing Allow-DNS-<zone> forward to AdGuard.
-{% for vlan in vlans if vlan.name not in resolver_zones %}
+# DNAT'd flow rides the Allow-DNS-<zone> forward to AdGuard (below).
+# `local`-DNS zones (work) are deliberately NOT hijacked.
+{% for vlan in vlans if vlan.dns == 'filtered' %}
 uci set firewall.redir_dns_{{ vlan.name }}=redirect
 uci set firewall.redir_dns_{{ vlan.name }}.name='Hijack-DNS-{{ vlan.name }}'
 uci set firewall.redir_dns_{{ vlan.name }}.src='{{ vlan.name }}'
@@ -197,9 +209,10 @@ uci add_list firewall.redir_dns_{{ vlan.name }}.proto='tcp'
 uci set firewall.redir_dns_{{ vlan.name }}.target='DNAT'
 {% endfor %}
 
-# DNS exception: `dns` in reach_out = may reach AdGuard (and only AdGuard)
-# in infra on 53 + DoT 853 — every VLAN resolves without opening infra.
-{% for vlan in vlans if 'dns' in vlan.reach_out | default([]) %}
+# DNS exception for `filtered` zones: reach AdGuard (and only AdGuard) in
+# infra on 53 + DoT 853 — resolves without otherwise opening infra. This is
+# also the forward the hijack DNAT above rides on.
+{% for vlan in vlans if vlan.dns == 'filtered' %}
 uci set firewall.rule_dns_{{ vlan.name }}=rule
 uci set firewall.rule_dns_{{ vlan.name }}.name='Allow-DNS-{{ vlan.name }}'
 uci set firewall.rule_dns_{{ vlan.name }}.src='{{ vlan.name }}'
