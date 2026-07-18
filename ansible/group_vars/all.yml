@@ -41,16 +41,20 @@ wifi_networks:
   # keep 16CVG stable and run MPSK on a SEPARATE new SSID you move devices onto
   # at your own pace. Retire 16CVG once everything's migrated + MPSK is proven.
 
-  # 1. LEGACY/stable — the current SSID. Existing devices, untouched. Normal
-  #    single-PSK → trusted VLAN. Drop this once migration to 16CVG-Plus done.
+  # 1. LEGACY/stable — must look EXACTLY like the old router so already-paired
+  #    devices reconnect with no prompt at the swap. Old router = WPA2-Personal
+  #    (confirmed 2026-07-18), so: psk2 (pure WPA2), 2.4+5 GHz only (WPA2 can't
+  #    do 6 GHz), no 802.11r (old router had none). Same SSID + password. During
+  #    transition trusted is reachable via WPA2 here (= your setup today) OR via
+  #    WPA3 on 16CVG-W3; retire this once devices are migrated, and trusted
+  #    becomes WPA3-only.
   - name: trusted
     ssid: "{{ wifi_ssid }}"
     key: "{{ wifi_pass }}"
     network: trusted
-    bands: [2g, 5g, 6g]
-    encryption: sae-mixed
-    ft: true
-    mobility_domain: "{{ roaming_id }}"
+    bands: [2g, 5g]
+    encryption: psk2
+    ft: false
 
   # 2+3. MPSK — the networks everything-but-guests moves onto, one device at a
   #    time. The PASSWORD picks the VLAN (not the SSID), so we run TWO MPSK
