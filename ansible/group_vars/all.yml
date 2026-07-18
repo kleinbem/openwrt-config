@@ -35,6 +35,14 @@ wifi_country: "IE"
 # Per-band channel widths for the BE14000 (MT7996, Wi-Fi 7 / EHT).
 wifi_htmodes: { 2g: "EHT20", 5g: "EHT160", 6g: "EHT320" }
 wifi_networks:
+  # ── MIGRATION-SAFE layout (2026-07-18) ────────────────────────────────────
+  # Rather than turn the existing 16CVG into MPSK (which would risk every
+  # already-connected device at once, esp. given the 25.12 MPSK regression),
+  # keep 16CVG stable and run MPSK on a SEPARATE new SSID you move devices onto
+  # at your own pace. Retire 16CVG once everything's migrated + MPSK is proven.
+
+  # 1. LEGACY/stable — the current SSID. Existing devices, untouched. Normal
+  #    single-PSK → trusted VLAN. Drop this once migration to 16CVG-Plus done.
   - name: trusted
     ssid: "{{ wifi_ssid }}"
     key: "{{ wifi_pass }}"
@@ -43,6 +51,25 @@ wifi_networks:
     encryption: sae-mixed
     ft: true
     mobility_domain: "{{ roaming_id }}"
+
+  # 2. MPSK migration target — password picks the VLAN (trusted or work). Same
+  #    trusted password as 16CVG, so moving a device is just "forget/rejoin".
+  #    ⚠️ BENCH-VALIDATE: OpenWrt 25.12 (ucode wifi-scripts) has a reported
+  #    wpa_psk_file dynamic-VLAN regression (auth-then-disconnect, #20355) —
+  #    not verifiable offline. 16CVG above is the safety net; nothing forces
+  #    you onto this SSID until it's proven. See docs/NETWORK_PLAN.md.
+  - name: main
+    ssid: "{{ wifi_ssid }}-Plus" # rename to 16CVG when the legacy SSID is retired
+    mpsk: true
+    bands: [2g, 5g, 6g]
+    encryption: sae-mixed # if SAE clients get no VLAN, wpa_psk_file is WPA2-side → try psk2
+    ft: false # conservative bring-up; enable once MPSK proven
+    default_network: trusted # base bind; dynamic_vlan '2' rejects a PSK with no vlanid
+    psk_vlans:
+      - { vlan: 10, key: "{{ wifi_pass }}" } # trusted
+      - { vlan: 50, key: "{{ _secret_vars.wifi_pass_work }}" } # work (WFH laptop)
+
+  # 3. IoT — dedicated (cheap stacks choke on dynamic-VLAN; provisioned once).
   - name: iot
     ssid: "{{ wifi_ssid }}-IoT"
     key: "{{ _secret_vars.wifi_pass_iot }}"
@@ -50,6 +77,8 @@ wifi_networks:
     bands: [2g, 5g] # 2.4 mandatory (2.4-only IoT gear), 5 for the capable ones
     encryption: sae-mixed
     ft: false
+
+  # 4. Cameras — dedicated.
   - name: cameras
     ssid: "{{ wifi_ssid }}-Cam"
     key: "{{ _secret_vars.wifi_pass_cameras }}"
@@ -57,6 +86,9 @@ wifi_networks:
     bands: [2g, 5g] # wifi cams are usually 2.4-only, but allow 5
     encryption: sae-mixed
     ft: false
+
+  # 5. Guest — plain SSID on purpose (a normal password is far easier to hand a
+  #    visitor than an MPSK per-device key). Client-isolated → guest VLAN.
   - name: guest
     ssid: "{{ wifi_ssid }}-Guest"
     key: "{{ _secret_vars.wifi_pass_guest }}"
@@ -66,15 +98,6 @@ wifi_networks:
     ft: true
     mobility_domain: "4321" # distinct FT domain — guest must not share keys with trusted
     isolate: true # guest clients can't see each other
-  - name: work
-    ssid: "{{ wifi_ssid }}-Work"
-    key: "{{ _secret_vars.wifi_pass_work }}" # add to openwrt-secrets/ansible-vars.yaml (YubiKey)
-    network: work
-    bands: [2g, 5g]
-    encryption: sae-mixed
-    ft: true
-    mobility_domain: "5678" # distinct FT domain — roams as she moves around the house
-    # not isolated: allows a work phone / dock on the same segment to interoperate
 
 # ---------------------------------------------------------------------------
 # AdGuard resolver — handed to DHCP clients in every VLAN (option 6).

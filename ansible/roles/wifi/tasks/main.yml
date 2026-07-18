@@ -11,6 +11,27 @@
 # The uci logic runs as one rendered shell script instead of per-setting raw
 # tasks: it must discover radios at runtime (a board without the Wi-Fi NIC
 # fitted is a clean no-op) and commit/reload once, atomically.
+
+# MPSK map file(s): one hostapd wpa_psk_file per `mpsk` SSID, mapping each
+# passphrase to a VLAN (vlanid=). hostapd + dynamic_vlan tags stations into
+# the right br-lan.<vlan> by which password they used. Written first so the
+# wireless config below can reference it. 0600 — contains passphrases.
+- name: Ensure hostapd dir exists
+  ansible.builtin.file:
+    path: /etc/hostapd
+    state: directory
+    mode: "0755"
+
+- name: Render MPSK wpa_psk map file(s)
+  ansible.builtin.template:
+    src: wpa_psk_file.j2
+    dest: "/etc/hostapd/{{ item.name }}.wpa_psk"
+    mode: "0600"
+  loop: "{{ wifi_networks | selectattr('mpsk', 'defined') | selectattr('mpsk') | list }}"
+  loop_control:
+    label: "{{ item.name }}" # don't print the psk_vlans (passphrases) in the loop header
+  no_log: true
+
 - name: Render Wi-Fi uci script
   ansible.builtin.template:
     src: wifi-config.sh.j2

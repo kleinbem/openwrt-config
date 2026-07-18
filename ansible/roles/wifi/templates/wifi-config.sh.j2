@@ -32,6 +32,35 @@ for radio in $RADIOS; do
   esac
 
 {% for net in wifi_networks %}
+{% if net.mpsk | default(false) %}
+  # SSID: {{ net.name }} (MPSK) — the PASSWORD selects the VLAN. hostapd reads
+  # /etc/hostapd/{{ net.name }}.wpa_psk (vlanid= per line) and dynamic_vlan
+  # tags each station into br-lan.<vlanid>. Base bind: '{{ net.default_network }}'.
+  case "$band" in {{ net.bands | join('|') }})
+    iface='{{ net.name }}_'"$radio"
+    uci set "wireless.$iface"=wifi-iface
+    uci set "wireless.$iface.device"="$radio"
+    uci set "wireless.$iface.mode"='ap'
+    uci set "wireless.$iface.ssid"={{ net.ssid | quote }}
+    uci set "wireless.$iface.network"='{{ net.default_network }}'
+    uci set "wireless.$iface.wpa_psk_file"='/etc/hostapd/{{ net.name }}.wpa_psk'
+    uci set "wireless.$iface.dynamic_vlan"='2'
+    uci set "wireless.$iface.vlan_naming"='1'
+    uci set "wireless.$iface.vlan_bridge"='br-lan'
+    if [ "$band" = "6g" ]; then
+      uci set "wireless.$iface.encryption"='sae'
+      uci set "wireless.$iface.ieee80211w"='2'
+    else
+      uci set "wireless.$iface.encryption"='{{ net.encryption }}'
+    fi
+{% if net.ft | default(false) %}
+    uci set "wireless.$iface.ieee80211r"='1'
+    uci set "wireless.$iface.mobility_domain"='{{ net.mobility_domain }}'
+    uci set "wireless.$iface.ft_over_ds"='0'
+    uci set "wireless.$iface.ft_psk_generate_local"='1'
+{% endif %}
+  ;; esac
+{% else %}
   # SSID: {{ net.name }} → network '{{ net.network if vlan_segmentation_live else "lan (flat interim; target: " + net.network + ")" }}'
   case "$band" in {{ net.bands | join('|') }})
     iface='{{ net.name }}_'"$radio"
@@ -59,6 +88,7 @@ for radio in $RADIOS; do
     uci set "wireless.$iface.isolate"='1'
 {% endif %}
   ;; esac
+{% endif %}
 {% endfor %}
 done
 
