@@ -52,22 +52,27 @@ wifi_networks:
     ft: true
     mobility_domain: "{{ roaming_id }}"
 
-  # 2. MPSK — the one network everything (except guests) moves onto, one device
-  #    at a time. The PASSWORD picks the VLAN: trusted / iot / cameras / work.
-  #    IoT + camera devices don't exist yet, so they're born here (no dedicated
-  #    -IoT/-Cam SSIDs). trusted keeps its existing password, so migrating a
-  #    trusted device is just "forget 16CVG / join 16CVG-MPSK".
-  #    ⚠️ BENCH-VALIDATE: (a) OpenWrt 25.12 (ucode wifi-scripts) has a reported
-  #    wpa_psk_file dynamic-VLAN regression (auth-then-disconnect, #20355), not
-  #    verifiable offline; (b) some cheap WPA2-only IoT chokes on sae-mixed
-  #    beacons and may not associate at all. 16CVG is the safety net; fallback
-  #    for a stubborn IoT/cam device is a small dedicated SSID (git history has
-  #    the -IoT/-Cam blocks). See docs/NETWORK_PLAN.md.
-  - name: main
-    ssid: "{{ wifi_ssid }}-MPSK" # rename to 16CVG when the legacy SSID is retired
+  # 2+3. MPSK — the networks everything-but-guests moves onto, one device at a
+  #    time. The PASSWORD picks the VLAN (not the SSID), so we run TWO MPSK
+  #    SSIDs that differ only in encryption tier; a device joins whichever its
+  #    radio likes and still lands in the right VLAN. Encryption strength is
+  #    matched to VLAN sensitivity:
+  #      • -W3 (WPA3/sae-mixed): carries the sensitive VLANs (trusted, work)
+  #        + iot/cameras for modern gear. Strong, not offline-crackable.
+  #      • -W2 (WPA2/psk2): compatibility SSID for cheap gear that chokes on
+  #        WPA3 beacons — carries ONLY low-trust VLANs (iot, cameras). If its
+  #        WPA2 password is ever cracked, it exposes only isolated VLANs.
+  #    trusted keeps its existing password (migrate = forget 16CVG / join -W3).
+  #    ⚠️ BENCH-VALIDATE (not verifiable offline): (a) 25.12 ucode wpa_psk_file
+  #    dynamic-VLAN regression #20355; (b) whether WPA3-SAE clients on -W3 get
+  #    a VLAN — wpa_psk_file is the WPA2 side, so SAE clients may need
+  #    sae_password+vlanid (else those devices use 16CVG/-W2). 16CVG is the
+  #    reliable WPA3 path for trusted regardless. See docs/NETWORK_PLAN.md.
+  - name: mpsk_w3
+    ssid: "{{ wifi_ssid }}-MPSK-W3"
     mpsk: true
     bands: [2g, 5g, 6g]
-    encryption: sae-mixed # if SAE clients get no VLAN, wpa_psk_file is WPA2-side → try psk2
+    encryption: sae-mixed
     ft: false # conservative bring-up; enable once MPSK proven
     default_network: trusted # base bind; dynamic_vlan '2' rejects a PSK with no vlanid
     psk_vlans:
@@ -75,6 +80,17 @@ wifi_networks:
       - { vlan: 20, key: "{{ _secret_vars.wifi_pass_iot }}" } # iot
       - { vlan: 30, key: "{{ _secret_vars.wifi_pass_cameras }}" } # cameras
       - { vlan: 50, key: "{{ _secret_vars.wifi_pass_work }}" } # work (WFH laptop)
+  - name: mpsk_w2
+    ssid: "{{ wifi_ssid }}-MPSK-W2"
+    mpsk: true
+    bands: [2g, 5g] # NOT 6g — 6 GHz is WPA3-only; this is the WPA2 tier
+    encryption: psk2 # pure WPA2 for maximum legacy-device compatibility
+    ft: false
+    default_network: iot # base bind (low-trust); dynamic_vlan '2' still requires a vlanid
+    # LOW-TRUST VLANs ONLY — never trusted/work on the crackable WPA2 tier.
+    psk_vlans:
+      - { vlan: 20, key: "{{ _secret_vars.wifi_pass_iot }}" } # iot
+      - { vlan: 30, key: "{{ _secret_vars.wifi_pass_cameras }}" } # cameras
 
   # 3. Guest — plain SSID on purpose (a normal password is far easier to hand a
   #    visitor than an MPSK per-device key). Client-isolated → guest VLAN.
