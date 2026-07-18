@@ -69,7 +69,7 @@ wifi_networks:
   #    sae_password+vlanid (else those devices use 16CVG/-W2). 16CVG is the
   #    reliable WPA3 path for trusted regardless. See docs/NETWORK_PLAN.md.
   - name: mpsk_w3
-    ssid: "{{ wifi_ssid }}-MPSK-W3"
+    ssid: "{{ wifi_ssid }}-W3"
     mpsk: true
     bands: [2g, 5g, 6g]
     encryption: sae-mixed
@@ -81,7 +81,7 @@ wifi_networks:
       - { vlan: 30, key: "{{ _secret_vars.wifi_pass_cameras }}" } # cameras
       - { vlan: 50, key: "{{ _secret_vars.wifi_pass_work }}" } # work (WFH laptop)
   - name: mpsk_w2
-    ssid: "{{ wifi_ssid }}-MPSK-W2"
+    ssid: "{{ wifi_ssid }}-W2"
     mpsk: true
     bands: [2g, 5g] # NOT 6g — 6 GHz is WPA3-only; this is the WPA2 tier
     encryption: psk2 # pure WPA2 for maximum legacy-device compatibility
