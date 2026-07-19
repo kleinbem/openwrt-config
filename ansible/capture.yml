@@ -1,0 +1,47 @@
+---
+# capture.yml — capture packets on a VLAN (or the WAN) at the gateway, pull the
+# .pcap locally to open in Wireshark. tcpdump is in the image; Wireshark runs
+# on YOUR machine (open the pulled file).
+#
+# Usage (from openwrt-config/):
+#   just capture VLAN [SECONDS]        # e.g. just capture iot 60
+#   just capture wan 30                # WAN uplink
+# with a BPF filter or a bigger capture dir (SSD — /tmp is RAM-limited):
+#   ansible-playbook capture.yml -e vlan=iot -e seconds=60 -e 'filter=port 53' -e capture_dir=/mnt/ssd
+- name: Packet capture
+  hosts: gateways
+  gather_facts: false
+  vars:
+    seconds: 30
+    capture_dir: /tmp # point at the SSD mount for long/busy captures (RAM otherwise)
+    filter: "" # optional BPF filter, e.g. "port 53" or "host 10.0.20.5"
+  tasks:
+    - name: Validate a VLAN/target was given
+      ansible.builtin.assert:
+        that: vlan is defined
+        fail_msg: "Pass -e vlan=<name|wan> (e.g. just capture iot 60)"
+
+    - name: Resolve the capture interface from the VLAN name
+      ansible.builtin.set_fact:
+        cap_iface: >-
+          {%- if vlan == 'wan' -%}{{ wan_iface }}
+          {%- else -%}br-lan.{{ vlans | selectattr('name', 'equalto', vlan) | map(attribute='id') | first }}
+          {%- endif -%}
+
+    - name: "Capture {{ seconds }}s on {{ cap_iface }}"
+      raw: "timeout {{ seconds }} tcpdump -i {{ cap_iface }} -s0 -U -w {{ capture_dir }}/capture.pcap {{ filter }} 2>/dev/null; true"
+
+    - name: Pull the .pcap to ./captures/
+      ansible.builtin.fetch:
+        src: "{{ capture_dir }}/capture.pcap"
+        dest: "./captures/{{ inventory_hostname }}-{{ vlan }}.pcap"
+        flat: true
+
+    - name: Clean up the capture on the router
+      ansible.builtin.file:
+        path: "{{ capture_dir }}/capture.pcap"
+        state: absent
+
+    - name: Where to find it
+      ansible.builtin.debug:
+        msg: "Saved ./captures/{{ inventory_hostname }}-{{ vlan }}.pcap — open it in Wireshark."

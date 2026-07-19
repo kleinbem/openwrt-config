@@ -48,3 +48,10 @@ release mac:
 # Show currently quarantined devices.
 quarantine-list:
     ansible-playbook -i ansible/inventory.ini ansible/quarantine.yml -e mac=00:00:00:00:00:00 -e state=list
+
+# --- Diagnostics: packet capture (open the pulled .pcap in Wireshark) ---
+
+# Capture packets on a VLAN (or 'wan') and pull the pcap. e.g. just capture iot 60
+capture vlan seconds="30":
+    @mkdir -p captures
+    ansible-playbook -i ansible/inventory.ini ansible/capture.yml -e vlan={{vlan}} -e seconds={{seconds}}
