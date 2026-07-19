@@ -31,6 +31,16 @@ qos_linklayer: "ethernet"
 qos_overhead: 44
 
 # ---------------------------------------------------------------------------
+# banIP feeds (roles/banip) — high-signal, modest-size only (boards run 2 GiB;
+# banIP holds sets in RAM). Add feeds cautiously and watch memory with
+# `banip -s`. NOT the huge aggregate/country lists.
+# ---------------------------------------------------------------------------
+banip_feeds:
+  - firehol_level1 # spamhaus DROP + dshield + bogons (highest signal)
+  - debl # blocklist.de brute-forcers
+  - backscatter # spoofed-source / backscatter
+
+# ---------------------------------------------------------------------------
 # Wi-Fi radios + SSIDs (roles/wifi) — spec locked 2026-07.
 # ---------------------------------------------------------------------------
 # The main SSID keeps its existing name AND password (clients survive the

@@ -1,0 +1,41 @@
+---
+# ---------------------------------------------------------------------------
+# banIP — drop known-malicious source IPs at the WAN edge (nftables sets fed
+# from reputation blocklists). Cheap defence for an internet-facing gateway:
+# stops scanners / botnet / brute-force sources before they reach anything.
+# ---------------------------------------------------------------------------
+# Gateway only (it's a WAN-edge control). RAM-conscious: the boards run at
+# 2 GiB (see the mem=2048M note), and banIP holds its sets in memory, so we
+# enable only a few HIGH-SIGNAL, modest-size feeds — NOT the huge aggregate
+# or country lists, which would balloon RAM and CPU on a router.
+#
+#   firehol_level1 — spamhaus DROP + dshield + fullbogons: the highest-signal,
+#                    lowest-false-positive "should never talk to you" set.
+#   debl           — blocklist.de: hosts caught brute-forcing ssh/mail/etc.
+#   backscatter    — spoofed-source / backscatter sources.
+# Add more later via banip_feeds if RAM allows (check `banip -s`).
+- name: Configure banIP (gateway edge blocking)
+  when: "'gateways' in group_names"
+  block:
+    - name: Base banIP settings
+      raw: |
+        uci set banip.global.ban_enabled='1'
+        uci set banip.global.ban_autodetect='1'
+        uci set banip.global.ban_nftexpiry='30m'
+        uci set banip.global.ban_loginput='1'
+        uci set banip.global.ban_logforwardwan='1'
+        uci set banip.global.ban_logforwardlan='0'
+        uci set banip.global.ban_protov4='1'
+        uci set banip.global.ban_protov6='1'
+        uci commit banip
+
+    - name: Select the (modest) feed set
+      raw: |
+        uci -q delete banip.global.ban_feed
+        {% for feed in banip_feeds | default(['firehol_level1', 'debl', 'backscatter']) %}
+        uci add_list banip.global.ban_feed='{{ feed }}'
+        {% endfor %}
+        uci commit banip
+
+    - name: Enable + start banIP
+      raw: /etc/init.d/banip enable && /etc/init.d/banip start
