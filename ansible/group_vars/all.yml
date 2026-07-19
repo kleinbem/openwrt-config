@@ -41,6 +41,15 @@ banip_feeds:
   - backscatter # spoofed-source / backscatter
 
 # ---------------------------------------------------------------------------
+# Remote syslog (roles/common) — ship router logs to a fleet collector. Empty
+# = local-only (safe no-op). Point at a syslog endpoint on the fleet (e.g. a
+# promtail/syslog receiver alongside Loki on nasbook) to enable.
+# ---------------------------------------------------------------------------
+remote_syslog_ip: "" # e.g. "10.0.0.30" — empty disables
+remote_syslog_port: 514
+remote_syslog_proto: "udp"
+
+# ---------------------------------------------------------------------------
 # Wi-Fi radios + SSIDs (roles/wifi) — spec locked 2026-07.
 # ---------------------------------------------------------------------------
 # The main SSID keeps its existing name AND password (clients survive the

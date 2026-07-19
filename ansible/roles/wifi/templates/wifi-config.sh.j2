@@ -41,6 +41,10 @@ for radio in $RADIOS; do
     uci set "wireless.$iface"=wifi-iface
     uci set "wireless.$iface.device"="$radio"
     uci set "wireless.$iface.mode"='ap'
+    # 802.11k (neighbor reports) + 802.11v (BSS transition) — give clients the
+    # info to roam smartly between the two APs; complements 802.11r + DAWN.
+    uci set "wireless.$iface.ieee80211k"='1'
+    uci set "wireless.$iface.bss_transition"='1'
     uci set "wireless.$iface.ssid"={{ net.ssid | quote }}
     uci set "wireless.$iface.network"='{{ net.default_network }}'
     uci set "wireless.$iface.wpa_psk_file"='/etc/hostapd/{{ net.name }}.wpa_psk'
@@ -67,6 +71,10 @@ for radio in $RADIOS; do
     uci set "wireless.$iface"=wifi-iface
     uci set "wireless.$iface.device"="$radio"
     uci set "wireless.$iface.mode"='ap'
+    # 802.11k (neighbor reports) + 802.11v (BSS transition) — give clients the
+    # info to roam smartly between the two APs; complements 802.11r + DAWN.
+    uci set "wireless.$iface.ieee80211k"='1'
+    uci set "wireless.$iface.bss_transition"='1'
     uci set "wireless.$iface.ssid"={{ net.ssid | quote }}
     uci set "wireless.$iface.key"={{ net.key | quote }}
     uci set "wireless.$iface.network"='{{ net.network if vlan_segmentation_live else "lan" }}'

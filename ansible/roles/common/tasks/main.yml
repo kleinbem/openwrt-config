@@ -11,3 +11,21 @@
     uci set system.@system[0].zonename='{{ timezone }}'
     uci set system.@system[0].timezone='{{ timezone_posix }}'
     uci commit system
+
+# Remote syslog: ship the router's logs to a central collector on the fleet so
+# they survive reboots and sit alongside everything else. Var-driven — set
+# remote_syslog_ip in group_vars to enable (default empty = local logging
+# only, a safe no-op until you have an endpoint). Also bump the local ring
+# buffer so recent logs survive between polls.
+- name: Configure remote syslog + local log buffer
+  raw: |
+    uci set system.@system[0].log_size='128'
+    {% if remote_syslog_ip | default('') %}
+    uci set system.@system[0].log_ip='{{ remote_syslog_ip }}'
+    uci set system.@system[0].log_port='{{ remote_syslog_port | default(514) }}'
+    uci set system.@system[0].log_proto='{{ remote_syslog_proto | default("udp") }}'
+    {% else %}
+    uci -q delete system.@system[0].log_ip || true
+    {% endif %}
+    uci commit system
+    /etc/init.d/log restart 2>/dev/null || true

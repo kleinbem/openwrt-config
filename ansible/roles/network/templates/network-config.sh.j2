@@ -16,6 +16,10 @@ if [ -z "$BR" ]; then
 fi
 uci set "network.$BR.type"='bridge'
 uci set "network.$BR.vlan_filtering"='1'
+# IGMP/MLD snooping: direct multicast only to subscribed ports instead of
+# flooding every port — matters for cast/streaming (Chromecast, AirPlay) and
+# keeps the mDNS-reflected discovery traffic from spraying the whole bridge.
+uci set "network.$BR.igmp_snooping"='1'
 uci -q delete "network.$BR.ports" || true
 {% for port in (pm.untagged.keys() | list) + pm.trunk %}
 uci add_list "network.$BR.ports"='{{ port }}'
@@ -100,6 +104,18 @@ uci commit system
 # Allow-Ping, … — all src wan) are kept; they bind to the new wan zone by name.
 while uci -q delete firewall.@zone[0]; do :; done
 while uci -q delete firewall.@forwarding[0]; do :; done
+
+# Defaults hardening: drop invalid/out-of-state packets and enable SYN-flood
+# protection at the edge. NOTE ON FLOW OFFLOADING: deliberately left OFF.
+# Software/HW flow-offloading bypasses the qdisc, which would defeat SQM/cake
+# (roles/qos) — and cake's latency control matters more than raw throughput
+# for the WFH calls at home WAN speeds (the CPU handles NAT fine there). HW
+# offload additionally needs mem=2048M or it drops packets (MT7988 bug). If a
+# future WAN is fast enough to need offload, turn SQM off and flip these.
+uci set firewall.@defaults[0].drop_invalid='1'
+uci set firewall.@defaults[0].synflood_protect='1'
+uci set firewall.@defaults[0].flow_offloading='0'
+uci set firewall.@defaults[0].flow_offloading_hw='0'
 
 uci set firewall.zn_wan=zone
 uci set firewall.zn_wan.name='wan'
