@@ -19,6 +19,18 @@ timezone: "Europe/Dublin" # zonename (needs zoneinfo-europe, baked into image)
 timezone_posix: "GMT0IST,M3.5.0/1,M10.5.0"
 
 # ---------------------------------------------------------------------------
+# QoS / SQM (roles/qos) — cake bufferbloat control on the WAN. Set both to
+# your MEASURED line speed (~90–95% of a speedtest) to enable; 0 = disabled
+# (safe no-op, so it ships now and you fill these at the bench).
+# ---------------------------------------------------------------------------
+wan_down_mbit: 0 # WAN download Mbit/s (e.g. 500) — 0 disables SQM
+wan_up_mbit: 0 # WAN upload   Mbit/s (e.g. 50)  — 0 disables SQM
+# Link-layer overhead: "ethernet"/44 suits fibre/ethernet WAN; for VDSL/PPPoE
+# use "ethernet"/34, for ATM/ADSL "atm"/44. Adjust at the bench if needed.
+qos_linklayer: "ethernet"
+qos_overhead: 44
+
+# ---------------------------------------------------------------------------
 # Wi-Fi radios + SSIDs (roles/wifi) — spec locked 2026-07.
 # ---------------------------------------------------------------------------
 # The main SSID keeps its existing name AND password (clients survive the
