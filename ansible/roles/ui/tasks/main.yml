@@ -2,15 +2,16 @@
 # ---------------------------------------------------------------------------
 # UI/UX — one clean, discoverable web UI.
 # ---------------------------------------------------------------------------
-# 1. Argon theme as the default LuCI look (modern, light/dark).
+# 1. Material theme as the default LuCI look (modern Material Design; it's in
+#    the official feed, unlike third-party argon).
 # 2. A static "network hub" landing page served at http://<router>/ with big
 #    clickable tiles: the router's own tools (each is also a LuCI menu app,
 #    from the -app-* packages) + the fleet dashboards. So from any router you
 #    reach everything in one click, and the central home.kleinbem.dev
 #    aggregates the rest.
-- name: Set Argon as the default LuCI theme
+- name: Set Material as the default LuCI theme
   raw: |
-    uci set luci.main.mediaurlbase='/luci-static/argon'
+    uci set luci.main.mediaurlbase='/luci-static/material'
     uci commit luci
 
 - name: Deploy the network hub landing page
