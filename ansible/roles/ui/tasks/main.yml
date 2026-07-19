@@ -1,0 +1,30 @@
+---
+# ---------------------------------------------------------------------------
+# UI/UX — one clean, discoverable web UI.
+# ---------------------------------------------------------------------------
+# 1. Argon theme as the default LuCI look (modern, light/dark).
+# 2. A static "network hub" landing page served at http://<router>/ with big
+#    clickable tiles: the router's own tools (each is also a LuCI menu app,
+#    from the -app-* packages) + the fleet dashboards. So from any router you
+#    reach everything in one click, and the central home.kleinbem.dev
+#    aggregates the rest.
+- name: Set Argon as the default LuCI theme
+  raw: |
+    uci set luci.main.mediaurlbase='/luci-static/argon'
+    uci commit luci
+
+- name: Deploy the network hub landing page
+  ansible.builtin.template:
+    src: hub.html.j2
+    dest: /www/index.html
+    mode: "0644"
+
+# uhttpd serves /www; LuCI lives at /cgi-bin/luci. Point the bare "/" at the
+# hub instead of the default LuCI redirect, so the first thing you see is the
+# clickable overview. LuCI itself stays one tile away.
+- name: Serve the hub at "/" (index before the LuCI redirect)
+  raw: |
+    uci -q delete_list uhttpd.main.index_page='index.html' 2>/dev/null || true
+    uci add_list uhttpd.main.index_page='index.html'
+    uci commit uhttpd
+    /etc/init.d/uhttpd reload 2>/dev/null || true

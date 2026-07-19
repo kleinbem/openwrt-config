@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ inventory_hostname }} — network hub</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #f4f5f7; color: #1c1e21;
+  }
+  header { padding: 28px 20px 8px; max-width: 1100px; margin: 0 auto; }
+  h1 { margin: 0; font-size: 22px; }
+  h1 small { font-weight: 400; opacity: .6; font-size: 15px; }
+  h2 { max-width: 1100px; margin: 28px auto 10px; padding: 0 20px;
+       font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .55; }
+  .grid { max-width: 1100px; margin: 0 auto; padding: 0 12px;
+          display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  a.tile {
+    display: block; padding: 16px 18px; border-radius: 12px; text-decoration: none;
+    background: #fff; color: inherit; border: 1px solid #e3e5e8;
+    transition: transform .08s ease, box-shadow .08s ease;
+  }
+  a.tile:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.10); }
+  .tile .ico { font-size: 22px; }
+  .tile .name { font-weight: 600; margin-top: 6px; }
+  .tile .desc { opacity: .6; font-size: 13px; margin-top: 2px; }
+  footer { max-width: 1100px; margin: 28px auto; padding: 0 20px; opacity: .5; font-size: 13px; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #16181c; color: #e6e8eb; }
+    a.tile { background: #1f2228; border-color: #2b2f36; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>{{ inventory_hostname }} <small>· network hub</small></h1>
+  </header>
+
+  <h2>This router</h2>
+  <div class="grid">
+    <a class="tile" href="/cgi-bin/luci/"><div class="ico">⚙️</div><div class="name">LuCI</div><div class="desc">Full router admin</div></a>
+    <a class="tile" href="/cgi-bin/luci/admin/statistics/graph"><div class="ico">📈</div><div class="name">Statistics</div><div class="desc">CPU / traffic / temp graphs</div></a>
+    <a class="tile" href="/cgi-bin/luci/admin/nlbw/"><div class="ico">📊</div><div class="name">Bandwidth</div><div class="desc">Per-device usage (nlbwmon)</div></a>
+    <a class="tile" href="/cgi-bin/luci/admin/services/banip"><div class="ico">🛡️</div><div class="name">banIP</div><div class="desc">Edge block reports</div></a>
+    <a class="tile" href="/cgi-bin/luci/admin/services/dawn"><div class="ico">📶</div><div class="name">DAWN</div><div class="desc">Wi-Fi clients / roaming</div></a>
+    <a class="tile" href="/cgi-bin/luci/admin/network/sqm"><div class="ico">🚦</div><div class="name">SQM / QoS</div><div class="desc">Bufferbloat control</div></a>
+  </div>
+
+  <h2>Fleet dashboards</h2>
+  <div class="grid">
+{% for link in ui_fleet_links %}
+    <a class="tile" href="{{ link.url }}"><div class="ico">{{ link.icon }}</div><div class="name">{{ link.name }}</div><div class="desc">{{ link.desc }}</div></a>
+{% endfor %}
+  </div>
+
+  <footer>{{ inventory_hostname }} · OpenWrt · the central {{ ui_home_dashboard | default("home.kleinbem.dev") }} aggregates all fleet services.</footer>
+</body>
+</html>

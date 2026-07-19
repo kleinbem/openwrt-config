@@ -50,6 +50,20 @@ remote_syslog_port: 514
 remote_syslog_proto: "udp"
 
 # ---------------------------------------------------------------------------
+# UI (roles/ui) — the router hub landing page's "Fleet dashboards" tiles.
+# The central home dashboard aggregates everything; these are quick jumps.
+# Edit freely; these are just clickable links.
+# ---------------------------------------------------------------------------
+ui_home_dashboard: "home.kleinbem.dev"
+ui_fleet_links:
+  - { name: "Home Dashboard", url: "https://home.kleinbem.dev", icon: "🏠", desc: "Everything, aggregated" }
+  - { name: "AdGuard DNS", url: "http://10.0.0.21", icon: "🚫", desc: "Filtering + query log" }
+  - { name: "Notifications", url: "https://ntfy.kleinbem.dev", icon: "📣", desc: "ntfy alerts / deploy signal" }
+  - { name: "n8n", url: "https://n8n.kleinbem.dev", icon: "📡", desc: "Automation workflows" }
+  - { name: "Code", url: "https://code.kleinbem.dev", icon: "💻", desc: "code-server" }
+  - { name: "Cache", url: "https://cache.kleinbem.dev", icon: "📦", desc: "Nix binary cache" }
+
+# ---------------------------------------------------------------------------
 # Wi-Fi radios + SSIDs (roles/wifi) — spec locked 2026-07.
 # ---------------------------------------------------------------------------
 # The main SSID keeps its existing name AND password (clients survive the

@@ -8,6 +8,7 @@
     - wifi # radios + SSIDs; safe while the connection is up
     - qos # SQM/cake on the WAN (gateway only; no-op until line speed set)
     - banip # edge threat-feed blocking (gateway only)
+    - ui # Argon theme + network hub landing page (all routers)
     - router # exporter/LXC/leases (+ flat LAN move when segmentation is off)
     - role: network # LAST: terminal network restart drops SSH (mgmt IP → infra VLAN)
       when: vlan_segmentation_live
