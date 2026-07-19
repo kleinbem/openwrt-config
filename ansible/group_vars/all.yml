@@ -40,6 +40,12 @@ banip_feeds:
   - debl # blocklist.de brute-forcers
   - backscatter # spoofed-source / backscatter
 
+# CrowdSec (roles/crowdsec) is gated OFF: the official 25.12 crowdsec +
+# crowdsec-firewall-bouncer packages conflict over /etc/config/crowdsec (apk
+# won't overwrite), so they're not in the image. Set true AND re-add the two
+# packages to the image profile once upstream fixes the conflict.
+crowdsec_enable: false
+
 # ---------------------------------------------------------------------------
 # Remote syslog (roles/common) — ship router logs to a fleet collector. Empty
 # = local-only (safe no-op). Point at a syslog endpoint on the fleet (e.g. a
