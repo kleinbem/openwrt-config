@@ -1,0 +1,57 @@
+---
+# quarantine.yml — CONTROL: isolate (or release) a device at the gateway edge,
+# live, without moving its VLAN. A firewall DROP keyed on the device's MAC
+# takes effect on the running connection immediately (Lever 2 — see the
+# "dynamic per-device control" notes). Not part of provisioning; run on demand.
+#
+# Usage (from openwrt-config/):
+#   just quarantine MAC [NAME]     # isolate
+#   just release   MAC             # release
+#   just quarantine-list           # show quarantined devices
+# or directly:
+#   ansible-playbook quarantine.yml -e mac=AA:BB:CC:DD:EE:FF -e state=on -e name=kids-tablet
+#   ansible-playbook quarantine.yml -e mac=AA:BB:CC:DD:EE:FF -e state=off
+#
+# Caveat: MAC-based, so a determined attacker could spoof a new MAC — fine for
+# a misbehaving/known device; for a real adversary, rotate that VLAN's key.
+- name: Device quarantine control
+  hosts: gateways
+  gather_facts: false
+  vars:
+    state: "on"
+  tasks:
+    - name: Validate a MAC was given
+      ansible.builtin.assert:
+        that: mac is defined and mac | length >= 12
+        fail_msg: "Pass -e mac=AA:BB:CC:DD:EE:FF"
+
+    - name: List quarantined devices
+      when: state == 'list'
+      block:
+        - name: Read quarantine rules
+          raw: "uci show firewall | grep -E 'name=.Quarantine-' || echo 'none'"
+          register: quarantine_list
+          changed_when: false
+        - name: Show
+          ansible.builtin.debug:
+            var: quarantine_list.stdout_lines
+
+    - name: Quarantine — DROP all traffic from the MAC (any zone)
+      when: state == 'on'
+      raw: |
+        S=q_{{ mac | replace(':', '') | lower }}
+        uci set firewall.$S=rule
+        uci set firewall.$S.name='Quarantine-{{ name | default(mac) }}'
+        uci set firewall.$S.src='*'
+        uci set firewall.$S.src_mac='{{ mac }}'
+        uci set firewall.$S.target='DROP'
+        uci commit firewall
+        /etc/init.d/firewall reload
+
+    - name: Release — remove the quarantine rule
+      when: state == 'off'
+      raw: |
+        S=q_{{ mac | replace(':', '') | lower }}
+        uci -q delete firewall.$S || true
+        uci commit firewall
+        /etc/init.d/firewall reload
