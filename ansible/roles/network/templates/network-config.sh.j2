@@ -88,6 +88,19 @@ uci add_list dhcp.{{ vlan.name }}.dhcp_option='6,{{ vlan.gateway }}'
 uci add_list dhcp.{{ vlan.name }}.dhcp_option='6,{{ adguard_ip }}'
 {% endif %}
 {% endfor %}
+
+# dnsmasq resolver hardening (the gateway's own DNS — serves the work/`local`
+# tier + the trusted/infra fallback). rebind_protection blocks DNS-rebinding
+# attacks (external names resolving to private IPs); the split-horizon domain
+# is whitelisted so internal `{{ dns_domain | default("kleinbem.dev") }}` still
+# resolves to LAN IPs. Bigger cache + don't-forward-junk for cleaner upstream.
+uci set dhcp.@dnsmasq[0].cachesize='2000'
+uci set dhcp.@dnsmasq[0].domainneeded='1'
+uci set dhcp.@dnsmasq[0].boguspriv='1'
+uci set dhcp.@dnsmasq[0].rebind_protection='1'
+uci set dhcp.@dnsmasq[0].rebind_localhost='1'
+uci -q delete dhcp.@dnsmasq[0].rebind_domain || true
+uci add_list dhcp.@dnsmasq[0].rebind_domain='{{ dns_domain | default("kleinbem.dev") }}'
 uci commit dhcp
 
 # --- NTP server: gateway serves time to the whole LAN ---------------------
