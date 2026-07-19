@@ -62,8 +62,9 @@ remote_syslog_proto: "udp"
 # ---------------------------------------------------------------------------
 ui_home_dashboard: "home.kleinbem.dev"
 ui_fleet_links:
+  # AdGuard is now LOCAL on the gateway (adguard_local) → it's a "This router"
+  # tile, not a fleet link. The home dashboard aggregates monitoring/Grafana.
   - { name: "Home Dashboard", url: "https://home.kleinbem.dev", icon: "🏠", desc: "Everything, aggregated" }
-  - { name: "AdGuard DNS", url: "http://10.0.0.21", icon: "🚫", desc: "Filtering + query log" }
   - { name: "Notifications", url: "https://ntfy.kleinbem.dev", icon: "📣", desc: "ntfy alerts / deploy signal" }
   - { name: "n8n", url: "https://n8n.kleinbem.dev", icon: "📡", desc: "Automation workflows" }
   - { name: "Code", url: "https://code.kleinbem.dev", icon: "💻", desc: "code-server" }
