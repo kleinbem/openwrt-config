@@ -1,0 +1,35 @@
+---
+# ---------------------------------------------------------------------------
+# NetBird — enroll the router into the fleet's WireGuard mesh (same mesh as
+# nvme/orin/core-pi/nasbook). Once up, the router reaches fleet peers directly:
+# unblocks the CrowdSec LAPI reachability, enables proper split-DNS, and lets
+# us retire the nixos-nvme hosts-file workaround. Runs on all routers.
+# ---------------------------------------------------------------------------
+# Secret-driven, safe no-op until keyed: put a (dedicated, ideally non-expiring
+# per your zero-trust NetBird policy) device setup key in sops as
+# netbird_setup_key. Self-hosted management? set netbird_management_url.
+# Idempotent: only enrolls when the daemon isn't already connected.
+- name: Enroll router into NetBird
+  when: (netbird_setup_key | default('')) | length > 0
+  block:
+    - name: Enable + start the NetBird service
+      raw: /etc/init.d/netbird enable && /etc/init.d/netbird start
+
+    - name: Check current NetBird status
+      raw: netbird status 2>/dev/null || true
+      register: netbird_status
+      changed_when: false
+
+    - name: Enroll with the setup key (only if not already connected)
+      raw: >-
+        netbird up --setup-key '{{ netbird_setup_key }}'
+        {% if netbird_management_url | default('') %}--management-url '{{ netbird_management_url }}'{% endif %}
+      when: "'Connected' not in (netbird_status.stdout | default(''))"
+
+- name: Note when NetBird is not configured
+  when: (netbird_setup_key | default('')) | length == 0
+  ansible.builtin.debug:
+    msg: >-
+      NetBird not enrolled — add netbird_setup_key to
+      openwrt-secrets/ansible-vars.yaml (a dedicated device key) to join the
+      router to the fleet mesh.

@@ -12,6 +12,7 @@
     - role: crowdsec # native behavioural IPS — gated OFF (upstream pkg conflict)
       when: crowdsec_enable | default(false)
     - wireguard # optional edge VPN / break-glass (gateway; no-op until keyed)
+    - netbird # join the fleet mesh (all routers; no-op until keyed)
     - ui # Material theme + network hub landing page (all routers)
     - router # exporter/LXC/leases (+ flat LAN move when segmentation is off)
     - role: network # LAST: terminal network restart drops SSH (mgmt IP → infra VLAN)

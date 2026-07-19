@@ -186,6 +186,16 @@ wg_reach: [infra, trusted] # zones VPN clients may reach
 wg_peers: [] # e.g. [{ name: phone, public_key: "...", ip: "10.9.0.2" }]
 
 # ---------------------------------------------------------------------------
+# NetBird (roles/netbird) — join the router to the FLEET mesh (same as
+# nvme/orin/core-pi/nasbook). Safe no-op until keyed. Add a dedicated device
+# setup key to sops as netbird_setup_key (a non-expiring device key fits the
+# zero-trust NetBird policy). netbird_management_url only for self-hosted.
+# Once enrolled: retire the nixos-nvme hosts-file workaround (a fleet change).
+# ---------------------------------------------------------------------------
+netbird_setup_key: "{{ _secret_vars.netbird_setup_key | default('') }}"
+netbird_management_url: "" # empty = NetBird default/cloud
+
+# ---------------------------------------------------------------------------
 # VLAN-segmented 10.x — SOURCE OF TRUTH for the network role (to be built).
 # Design + firewall matrix: ../../../docs/NETWORK_PLAN.md.
 # The fleet — the Tang MESH (every capable host: .5/.12/.21/.22/nasbook…),
