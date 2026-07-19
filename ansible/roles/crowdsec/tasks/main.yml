@@ -1,0 +1,74 @@
+---
+# ---------------------------------------------------------------------------
+# CrowdSec — native, self-contained behavioural IPS on the router.
+# ---------------------------------------------------------------------------
+# The agent parses the router's OWN logs (ssh/dropbear, firewall drops, dns),
+# the local LAPI makes decisions, and the firewall-bouncer enforces them as
+# nftables drops. Fully self-contained: local LAPI, NO dependency on the fleet
+# CrowdSec (which keeps protecting the fleet's services independently).
+# Complements banIP (static reputation feeds) with behavioural detection
+# (brute-force / probing patterns).
+#
+# ⚠️ BENCH-VERIFY (needs the running service + internet to the CrowdSec hub;
+# not offline-testable): collection install and bouncer enrollment. The role
+# is idempotent — safe to re-run once those succeed.
+- name: Configure CrowdSec (gateway)
+  when: "'gateways' in group_names"
+  block:
+    # CrowdSec needs logs as files; OpenWrt logs to a ring buffer by default.
+    # Point syslog at a file so the agent can read it (persist on the SSD at
+    # the bench if you want history across reboots).
+    - name: Log to a file so CrowdSec can read it
+      raw: |
+        uci set system.@system[0].log_file='/var/log/messages'
+        uci commit system
+        /etc/init.d/log restart 2>/dev/null || true
+
+    - name: Acquisition — parse the router syslog
+      ansible.builtin.copy:
+        dest: /etc/crowdsec/acquis.yaml
+        mode: "0644"
+        content: |
+          # Managed by roles/crowdsec — router's own syslog.
+          filenames:
+            - /var/log/messages
+          labels:
+            type: syslog
+
+    - name: Enable + start the local CrowdSec agent/LAPI
+      raw: /etc/init.d/crowdsec enable && /etc/init.d/crowdsec start
+
+    # Behavioural rulesets. base linux + ssh brute-force + firewall/nftables.
+    # Needs internet to the hub; best-effort so a temporary outage doesn't fail
+    # the whole play.
+    - name: Install CrowdSec collections (best-effort — needs hub access)
+      raw: |
+        cscli hub update || true
+        for c in crowdsecurity/linux crowdsecurity/sshd crowdsecurity/nftables; do
+          cscli collections list -o raw 2>/dev/null | grep -q "$c" || cscli collections install "$c" || true
+        done
+        /etc/init.d/crowdsec restart
+      register: crowdsec_collections
+      changed_when: false
+
+    # Register the local firewall bouncer if not already, capture its key, and
+    # point the bouncer at the local LAPI. Idempotent.
+    - name: Enroll + configure the firewall bouncer (nftables enforcement)
+      raw: |
+        if ! cscli bouncers list -o raw 2>/dev/null | grep -q '^openwrt-fw'; then
+          KEY=$(cscli bouncers add openwrt-fw -o raw)
+          cat > /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml <<EOF
+        mode: nftables
+        update_frequency: 10s
+        api_url: http://127.0.0.1:8080/
+        api_key: ${KEY}
+        nftables:
+          ipv4: { enabled: true, table: crowdsec, chain: crowdsec-chain }
+          ipv6: { enabled: true, table: crowdsec6, chain: crowdsec6-chain }
+        EOF
+        fi
+      register: crowdsec_bouncer
+      changed_when: "'openwrt-fw' in crowdsec_bouncer.stdout | default('')"
+
+    - name: Enable + start the firewall bouncer
+      raw: /etc/init.d/crowdsec-firewall-bouncer enable && /etc/init.d/crowdsec-firewall-bouncer restart

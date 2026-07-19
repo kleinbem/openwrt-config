@@ -64,14 +64,20 @@ uci set network.{{ vlan.name }}.proto='none'
 uci commit network
 {% if is_gw %}
 
-# --- DHCP: pool per VLAN; resolver via option 6, per the `dns` tier --------
-#  • trusted  → AdGuard primary + this VLAN's own gateway (unfiltered) as
-#    fallback, so the LAN keeps resolving if hass-pi is down. No hijack.
-#  • filtered → AdGuard ONLY — no unfiltered fallback; a DNS hijack (below)
-#    forces every :53 to AdGuard so hardcoded resolvers can't bypass it.
-#    Trade-off: AdGuard down = degraded DNS for these zones (accepted).
-#  • local    → the router's own dnsmasq (unfiltered) ONLY; no AdGuard, no
-#    hijack — so a corporate VPN's own DNS is respected (work laptop).
+# --- DHCP: pool per VLAN; resolver via option 6 ----------------------------
+{% if adguard_local | default(false) %}
+# adguard_local: AdGuard Home runs on THIS gateway (:53), so every VLAN
+# resolves against its own gateway IP — filtering is local + always-up, and
+# the cross-VLAN "reach AdGuard in infra" rules disappear. Per-VLAN filtering
+# policy is set per-client inside AdGuard (roles/adguard). Restricted zones
+# still get a :53 input allow + hijack below so hardcoded resolvers can't skip
+# AdGuard. (`local`-tier/work also lands on AdGuard now; corporate VPN tunnels
+# its own DNS so it's unaffected — allowlist a domain in AdGuard if needed.)
+{% else %}
+# External AdGuard (adguard_ip) with the per-`dns`-tier policy:
+#  • trusted → AdGuard + own-gateway unfiltered fallback (survives hass-pi down)
+#  • filtered → AdGuard only + hijack  •  local → gateway dnsmasq unfiltered
+{% endif %}
 uci -q delete dhcp.lan || true
 {% for vlan in vlans %}
 uci set dhcp.{{ vlan.name }}=dhcp
@@ -80,7 +86,9 @@ uci set dhcp.{{ vlan.name }}.start='{{ vlan.dhcp.start }}'
 uci set dhcp.{{ vlan.name }}.limit='{{ vlan.dhcp.limit }}'
 uci set dhcp.{{ vlan.name }}.leasetime='12h'
 uci -q delete dhcp.{{ vlan.name }}.dhcp_option || true
-{% if vlan.dns == 'trusted' %}
+{% if adguard_local | default(false) %}
+uci add_list dhcp.{{ vlan.name }}.dhcp_option='6,{{ vlan.gateway }}'
+{% elif vlan.dns == 'trusted' %}
 uci add_list dhcp.{{ vlan.name }}.dhcp_option='6,{{ adguard_ip }},{{ vlan.gateway }}'
 {% elif vlan.dns == 'local' %}
 uci add_list dhcp.{{ vlan.name }}.dhcp_option='6,{{ vlan.gateway }}'
@@ -167,8 +175,9 @@ uci set firewall.fwd_{{ vlan.name }}_wan.dest='wan'
 
 # Input-REJECT zones (everything except the `trusted` DNS tier) still need,
 # from the router itself: DHCP, NTP (their only clock — see server above),
-# and ping. For `local`-DNS zones (work) also allow :53 to the router — they
-# resolve via the gateway's own unfiltered dnsmasq (no AdGuard, no hijack).
+# and ping. :53 to the router is allowed for `local`-DNS zones (work, gateway
+# dnsmasq) AND for every zone when adguard_local (they resolve against the
+# gateway's own AdGuard on :53).
 {% for vlan in vlans if vlan.dns != 'trusted' %}
 uci set firewall.rule_dhcp_{{ vlan.name }}=rule
 uci set firewall.rule_dhcp_{{ vlan.name }}.name='Allow-DHCP-{{ vlan.name }}'
@@ -182,7 +191,7 @@ uci set firewall.rule_ntp_{{ vlan.name }}.src='{{ vlan.name }}'
 uci set firewall.rule_ntp_{{ vlan.name }}.proto='udp'
 uci set firewall.rule_ntp_{{ vlan.name }}.dest_port='123'
 uci set firewall.rule_ntp_{{ vlan.name }}.target='ACCEPT'
-{% if vlan.dns == 'local' %}
+{% if vlan.dns == 'local' or (adguard_local | default(false)) %}
 uci set firewall.rule_dnslocal_{{ vlan.name }}=rule
 uci set firewall.rule_dnslocal_{{ vlan.name }}.name='Allow-DNS-local-{{ vlan.name }}'
 uci set firewall.rule_dnslocal_{{ vlan.name }}.src='{{ vlan.name }}'
@@ -230,7 +239,7 @@ uci set firewall.redir_dns_{{ vlan.name }}=redirect
 uci set firewall.redir_dns_{{ vlan.name }}.name='Hijack-DNS-{{ vlan.name }}'
 uci set firewall.redir_dns_{{ vlan.name }}.src='{{ vlan.name }}'
 uci set firewall.redir_dns_{{ vlan.name }}.src_dport='53'
-uci set firewall.redir_dns_{{ vlan.name }}.dest_ip='{{ adguard_ip }}'
+uci set firewall.redir_dns_{{ vlan.name }}.dest_ip='{{ vlan.gateway if (adguard_local | default(false)) else adguard_ip }}'
 uci set firewall.redir_dns_{{ vlan.name }}.dest_port='53'
 uci -q delete firewall.redir_dns_{{ vlan.name }}.proto || true
 uci add_list firewall.redir_dns_{{ vlan.name }}.proto='udp'
@@ -238,10 +247,10 @@ uci add_list firewall.redir_dns_{{ vlan.name }}.proto='tcp'
 uci set firewall.redir_dns_{{ vlan.name }}.target='DNAT'
 {% endfor %}
 
-# DNS exception for `filtered` zones: reach AdGuard (and only AdGuard) in
-# infra on 53 + DoT 853 — resolves without otherwise opening infra. This is
-# also the forward the hijack DNAT above rides on.
-{% for vlan in vlans if vlan.dns == 'filtered' %}
+# DNS exception for `filtered` zones (external AdGuard only): reach AdGuard in
+# infra on 53 + DoT 853, and the forward the hijack DNAT rides on. Not needed
+# with adguard_local — AdGuard is on each VLAN's own gateway (within-zone).
+{% for vlan in vlans if vlan.dns == 'filtered' and not (adguard_local | default(false)) %}
 uci set firewall.rule_dns_{{ vlan.name }}=rule
 uci set firewall.rule_dns_{{ vlan.name }}.name='Allow-DNS-{{ vlan.name }}'
 uci set firewall.rule_dns_{{ vlan.name }}.src='{{ vlan.name }}'

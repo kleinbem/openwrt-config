@@ -1,0 +1,79 @@
+---
+# ---------------------------------------------------------------------------
+# WireGuard — native road-warrior VPN endpoint on the gateway (edge-terminated
+# remote access). Additive: a new wg0 interface + its own firewall zone; does
+# not touch existing routing/NAT, so it can't disturb the running network.
+# ---------------------------------------------------------------------------
+# Gateway only. Secret-driven, safe no-op until configured: set
+# wg_server_private_key (sops, openwrt-secrets/ansible-vars.yaml) + list peers
+# in wg_peers. Generate a keypair with `wg genkey | tee priv | wg pubkey`.
+# Clients get an address in wg_subnet and reach the zones in wg_reach.
+- name: Configure WireGuard road-warrior server
+  when: >-
+    'gateways' in group_names
+    and (wg_server_private_key | default('')) | length > 0
+    and (wg_peers | default([])) | length > 0
+  block:
+    - name: WireGuard interface (server)
+      raw: |
+        uci set network.wg0=interface
+        uci set network.wg0.proto='wireguard'
+        uci set network.wg0.private_key='{{ wg_server_private_key }}'
+        uci set network.wg0.listen_port='{{ wg_listen_port | default(51820) }}'
+        uci -q delete network.wg0.addresses || true
+        uci add_list network.wg0.addresses='{{ wg_subnet | default("10.9.0.1") }}/24'
+        uci commit network
+
+    - name: Peers (clients)
+      raw: |
+        while uci -q delete network.@wireguard_wg0[0]; do :; done
+        {% for peer in wg_peers %}
+        S=$(uci add network wireguard_wg0)
+        uci set network.$S.description='{{ peer.name }}'
+        uci set network.$S.public_key='{{ peer.public_key }}'
+        {% if peer.preshared_key | default('') %}
+        uci set network.$S.preshared_key='{{ peer.preshared_key }}'
+        {% endif %}
+        uci -q delete network.$S.allowed_ips || true
+        uci add_list network.$S.allowed_ips='{{ peer.ip }}/32'
+        uci set network.$S.route_allowed_ips='1'
+        {% endfor %}
+        uci commit network
+
+    - name: Firewall — VPN zone + WAN allow + reach the chosen zones
+      raw: |
+        uci set firewall.zn_vpn=zone
+        uci set firewall.zn_vpn.name='vpn'
+        uci -q delete firewall.zn_vpn.network || true
+        uci add_list firewall.zn_vpn.network='wg0'
+        uci set firewall.zn_vpn.input='ACCEPT'
+        uci set firewall.zn_vpn.output='ACCEPT'
+        uci set firewall.zn_vpn.forward='REJECT'
+        {% for dest in wg_reach | default(['infra', 'trusted']) %}
+        uci set firewall.fwd_vpn_{{ dest }}=forwarding
+        uci set firewall.fwd_vpn_{{ dest }}.src='vpn'
+        uci set firewall.fwd_vpn_{{ dest }}.dest='{{ dest }}'
+        {% endfor %}
+        uci set firewall.fwd_vpn_wan=forwarding
+        uci set firewall.fwd_vpn_wan.src='vpn'
+        uci set firewall.fwd_vpn_wan.dest='wan'
+        uci set firewall.rule_wg_in=rule
+        uci set firewall.rule_wg_in.name='Allow-WireGuard'
+        uci set firewall.rule_wg_in.src='wan'
+        uci set firewall.rule_wg_in.proto='udp'
+        uci set firewall.rule_wg_in.dest_port='{{ wg_listen_port | default(51820) }}'
+        uci set firewall.rule_wg_in.target='ACCEPT'
+        uci commit firewall
+
+    - name: Bring up WireGuard
+      raw: /etc/init.d/network reload && /etc/init.d/firewall reload
+
+- name: Note when WireGuard is skipped
+  when: >-
+    'gateways' in group_names
+    and ((wg_server_private_key | default('')) | length == 0
+         or (wg_peers | default([])) | length == 0)
+  ansible.builtin.debug:
+    msg: >-
+      WireGuard not configured — set wg_server_private_key (sops) + wg_peers to
+      enable edge-terminated remote access.

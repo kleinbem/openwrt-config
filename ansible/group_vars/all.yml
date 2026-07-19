@@ -157,7 +157,27 @@ wifi_networks:
 # AdGuard resolver — handed to DHCP clients in every VLAN (option 6).
 # hass-pi, in the infra VLAN. See docs/NETWORK_PLAN.md.
 # ---------------------------------------------------------------------------
-adguard_ip: "10.0.0.21"
+adguard_ip: "10.0.0.21" # external AdGuard (hass-pi) — used only when adguard_local is false
+
+# ---------------------------------------------------------------------------
+# adguard_local: run AdGuard Home NATIVELY on the gateway (roles/adguard) and
+# point every VLAN's DNS at its own gateway. true = move filtering to the edge
+# (the network role reworks option-6 + hijack accordingly); the external
+# hass-pi AdGuard is then retired at cutover (a fleet change, done separately).
+# ---------------------------------------------------------------------------
+adguard_local: true
+
+# ---------------------------------------------------------------------------
+# WireGuard (roles/wireguard) — OPTIONAL edge VPN / break-glass (NetBird
+# already covers normal remote access). Safe no-op until keys are set.
+# Generate: `wg genkey | tee server.key | wg pubkey > server.pub`; put the
+# private key in sops (wg_server_private_key) and add peers with their pubkeys.
+# ---------------------------------------------------------------------------
+wg_server_private_key: "{{ _secret_vars.wg_server_private_key | default('') }}"
+wg_listen_port: 51820
+wg_subnet: "10.9.0.1"
+wg_reach: [infra, trusted] # zones VPN clients may reach
+wg_peers: [] # e.g. [{ name: phone, public_key: "...", ip: "10.9.0.2" }]
 
 # ---------------------------------------------------------------------------
 # VLAN-segmented 10.x — SOURCE OF TRUTH for the network role (to be built).

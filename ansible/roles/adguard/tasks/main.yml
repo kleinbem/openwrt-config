@@ -1,0 +1,49 @@
+---
+# ---------------------------------------------------------------------------
+# AdGuard Home — native DNS filtering on the gateway (moved off hass-pi).
+# ---------------------------------------------------------------------------
+# DNS filtering belongs at the edge: with AdGuard local, clients resolve
+# against the gateway (fast, always-up), the cross-VLAN "reach AdGuard in
+# infra" rules disappear, and the fleet no longer owns LAN DNS. Gateway only.
+# Gated on `adguard_local` — the network role reworks DHCP option-6 + the DNS
+# hijack to point at the LOCAL gateway when this is true (see roles/network).
+#
+# DNS port split: AdGuard binds :53 (the resolver clients use); dnsmasq drops
+# to :5353 and keeps DHCP + local-lease names. Point AdGuard's upstream for the
+# local domain at 127.0.0.1:5353 (done in the AdGuard UI — see below).
+#
+# ⚠️ AdGuard's own config (upstreams, blocklists, admin login, per-client
+# rules) is UI-managed at http://<gateway>:3000 on first boot — same as it was
+# on hass-pi. This role does the OpenWrt-side plumbing only.
+- name: AdGuard Home native DNS (gateway)
+  when: "'gateways' in group_names and (adguard_local | default(false))"
+  block:
+    - name: Move dnsmasq off :53 (AdGuard takes it); keep DHCP + local names
+      raw: |
+        uci set dhcp.@dnsmasq[0].port='5353'
+        uci commit dhcp
+        /etc/init.d/dnsmasq restart
+
+    - name: Enable + start AdGuard Home
+      raw: |
+        uci -q set adguardhome.config.enabled='1' 2>/dev/null || true
+        uci -q commit adguardhome 2>/dev/null || true
+        /etc/init.d/adguardhome enable && /etc/init.d/adguardhome start
+
+    - name: Allow the AdGuard admin UI from infra only (:3000)
+      raw: |
+        uci set firewall.rule_agh_ui=rule
+        uci set firewall.rule_agh_ui.name='Allow-AdGuard-UI-infra'
+        uci set firewall.rule_agh_ui.src='infra'
+        uci set firewall.rule_agh_ui.proto='tcp'
+        uci set firewall.rule_agh_ui.dest_port='3000'
+        uci set firewall.rule_agh_ui.target='ACCEPT'
+        uci commit firewall
+        /etc/init.d/firewall reload
+
+- name: Note when AdGuard-local is off
+  when: "'gateways' in group_names and not (adguard_local | default(false))"
+  ansible.builtin.debug:
+    msg: >-
+      adguard_local is false — DNS uses the external AdGuard (adguard_ip). Set
+      adguard_local: true to move filtering onto the gateway.

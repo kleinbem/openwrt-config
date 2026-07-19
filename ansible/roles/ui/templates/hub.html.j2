@@ -47,6 +47,9 @@
     <a class="tile" href="/cgi-bin/luci/admin/services/banip"><div class="ico">🛡️</div><div class="name">banIP</div><div class="desc">Edge block reports</div></a>
     <a class="tile" href="/cgi-bin/luci/admin/services/dawn"><div class="ico">📶</div><div class="name">DAWN</div><div class="desc">Wi-Fi clients / roaming</div></a>
     <a class="tile" href="/cgi-bin/luci/admin/network/sqm"><div class="ico">🚦</div><div class="name">SQM / QoS</div><div class="desc">Bufferbloat control</div></a>
+{% if adguard_local | default(false) %}
+    <a class="tile" href="{{ adguard_ui_url | default('http://10.0.0.1:3000') }}"><div class="ico">🚫</div><div class="name">AdGuard Home</div><div class="desc">DNS filtering + query log</div></a>
+{% endif %}
   </div>
 
   <h2>Fleet dashboards</h2>
