@@ -14,6 +14,6 @@
     - wireguard # optional edge VPN / break-glass (gateway; no-op until keyed)
     - netbird # join the fleet mesh (all routers; no-op until keyed)
     - ui # Material theme + network hub landing page (all routers)
-    - router # exporter/LXC/leases (+ flat LAN move when segmentation is off)
+    - router # exporter/leases (+ flat LAN move when segmentation is off)
     - role: network # LAST: terminal network restart drops SSH (mgmt IP → infra VLAN)
       when: vlan_segmentation_live

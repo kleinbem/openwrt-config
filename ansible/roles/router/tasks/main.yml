@@ -56,30 +56,7 @@
     enabled: true
     state: started
 
-# Setup the LXC Host Environment (hosts with the lxc-host inventory tag —
-# currently ap-upstairs, whose NVMe holds /srv/lxc)
-- name: Setup LXC Host Config
-  when: "'lxc_hosts' in group_names"
-  block:
-    - name: Ensure NVMe mount point exists
-      ansible.builtin.file:
-        path: /srv/lxc
-        state: directory
-        mode: "0755"
 
-    - name: Configure LXC to use NVMe
-      ansible.builtin.lineinfile:
-        path: /etc/lxc/lxc.conf
-        line: "lxc.lxcpath = /srv/lxc"
-        create: true
-        mode: "0644"
-
-    - name: Enable LXC Nesting (for Podman inside)
-      ansible.builtin.blockinfile:
-        path: /etc/lxc/default.conf
-        block: |
-          lxc.mount.auto = cgroup:mixed proc:mixed sys:mixed
-          lxc.apparmor.profile = unconfined
 
 # ---------------------------------------------------------------------------
 # TERMINAL TASK — moves the gateway's own LAN IP onto the fleet subnet.
