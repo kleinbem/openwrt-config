@@ -31,5 +31,5 @@
   ansible.builtin.debug:
     msg: >-
       NetBird not enrolled — add netbird_setup_key to
-      openwrt-secrets/ansible-vars.yaml (a dedicated device key) to join the
-      router to the fleet mesh.
+      kleinbem-secrets/openwrt/shared.yaml (a dedicated device key) to join
+      the router to the fleet mesh.

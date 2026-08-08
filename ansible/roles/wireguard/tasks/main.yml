@@ -5,8 +5,8 @@
 # not touch existing routing/NAT, so it can't disturb the running network.
 # ---------------------------------------------------------------------------
 # Gateway only. Secret-driven, safe no-op until configured: set
-# wg_server_private_key (sops, openwrt-secrets/ansible-vars.yaml) + list peers
-# in wg_peers. Generate a keypair with `wg genkey | tee priv | wg pubkey`.
+# wg_server_private_key (sops, kleinbem-secrets/openwrt/shared.yaml) + list
+# peers in wg_peers. Generate a keypair with `wg genkey | tee priv | wg pubkey`.
 # Clients get an address in wg_subnet and reach the zones in wg_reach.
 - name: Configure WireGuard road-warrior server
   when: >-

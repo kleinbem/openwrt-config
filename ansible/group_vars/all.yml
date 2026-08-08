@@ -1,14 +1,15 @@
 ---
 # ---------------------------------------------------------------------------
 # Secret-relevant values (SSID, passphrase, static-lease MACs) live in
-# openwrt-secrets/ansible-vars.yaml (sops/age) — this repo is public, that
+# kleinbem-secrets/openwrt/shared.yaml (sops/age, cutover 2026-08-08 —
+# replaces openwrt-secrets/ansible-vars.yaml) — this repo is public, that
 # one is not. The lookup is lazy: only tasks that reference these vars
 # trigger a decrypt (YubiKey must be present, same as the firmware build).
-# Edit with: just secrets::edit ansible-vars.yaml
+# Edit with: just secrets::edit openwrt/shared.yaml
 # ---------------------------------------------------------------------------
 _secret_vars: >-
   {{ lookup('community.sops.sops',
-            playbook_dir ~ '/../../openwrt-secrets/ansible-vars.yaml')
+            playbook_dir ~ '/../../kleinbem-secrets/openwrt/shared.yaml')
      | from_yaml }}
 wifi_ssid: "{{ _secret_vars.wifi_ssid }}"
 wifi_pass: "{{ _secret_vars.wifi_pass }}"
@@ -75,9 +76,9 @@ ui_fleet_links:
 # ---------------------------------------------------------------------------
 # The main SSID keeps its existing name AND password (clients survive the
 # router swap unchanged); the per-VLAN SSIDs derive their names from it and
-# take NEW passphrases from openwrt-secrets/ansible-vars.yaml
+# take NEW passphrases from kleinbem-secrets/openwrt/shared.yaml
 # (wifi_pass_iot / wifi_pass_guest / wifi_pass_cameras — add via
-# `just secrets::edit ansible-vars.yaml`).
+# `just secrets::edit openwrt/shared.yaml`).
 # `encryption: sae-mixed` = WPA2/WPA3 transition mode; the role forces pure
 # SAE + MFP on 6 GHz (mandated there). Drop a network to psk2 only if a
 # specific device refuses the transition mode.
@@ -308,8 +309,8 @@ ap_mgmt_ip: "10.0.0.2" # ap-upstairs' address on the infra VLAN
 # hosts wandered off 10.0.0.5 and the Orin's clevis (bound to
 # http://10.0.0.5:7654) could no longer auto-unlock LUKS.
 #
-# The lease list itself (names, IPs, MACs) lives in openwrt-secrets/
-# ansible-vars.yaml — MACs are device fingerprints and stay out of this
+# The lease list itself (names, IPs, MACs) lives in kleinbem-secrets/
+# openwrt/shared.yaml — MACs are device fingerprints and stay out of this
 # public repo. Subnet check still applies: if the OpenWrt LAN is NOT
 # 10.0.0.0/16, both the lease IPs AND the Orin's clevis binding must move
 # to the new subnet together.
