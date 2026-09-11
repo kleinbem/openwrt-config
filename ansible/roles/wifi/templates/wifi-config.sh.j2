@@ -65,7 +65,7 @@ for radio in $RADIOS; do
 {% endif %}
   ;; esac
 {% else %}
-  # SSID: {{ net.name }} → network '{{ net.network if vlan_segmentation_live else "lan (flat interim; target: " + net.network + ")" }}'
+  # SSID: {{ net.name }} → network '{{ net.network }}'
   case "$band" in {{ net.bands | join('|') }})
     iface='{{ net.name }}_'"$radio"
     uci set "wireless.$iface"=wifi-iface
@@ -77,7 +77,7 @@ for radio in $RADIOS; do
     uci set "wireless.$iface.bss_transition"='1'
     uci set "wireless.$iface.ssid"={{ net.ssid | quote }}
     uci set "wireless.$iface.key"={{ net.key | quote }}
-    uci set "wireless.$iface.network"='{{ net.network if vlan_segmentation_live else "lan" }}'
+    uci set "wireless.$iface.network"='{{ net.network }}'
     if [ "$band" = "6g" ]; then
       # 6 GHz mandates pure WPA3-SAE + management frame protection.
       uci set "wireless.$iface.encryption"='sae'

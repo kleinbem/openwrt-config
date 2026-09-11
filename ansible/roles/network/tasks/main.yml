@@ -6,7 +6,7 @@
 # Gateway: per-VLAN interfaces + DHCP pools (AdGuard via option 6) + the full
 # firewall zone matrix. AP: same bridge-VLANs, single mgmt IP on infra, L2
 # bridge for everything else — its SSIDs tag clients into the right VLAN over
-# the trunk. Gated in site.yml on vlan_segmentation_live.
+# the trunk.
 #
 # LUKS constraint (do not break): the Tang mesh and every headless-unlock
 # host live together in the infra VLAN, so clevis unlock never crosses a

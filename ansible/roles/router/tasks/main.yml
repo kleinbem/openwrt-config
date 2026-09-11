@@ -14,13 +14,6 @@
 - name: Configure fleet gateway DHCP + DNS handoff
   when: "'gateways' in group_names"
   block:
-    - name: Hand DHCP clients AdGuard as their DNS resolver (option 6, flat interim only)
-      when: not vlan_segmentation_live # segmented: roles/network sets option 6 per VLAN
-      raw: |
-        uci -q delete dhcp.lan.dhcp_option
-        uci add_list dhcp.lan.dhcp_option='6,{{ adguard_ip }}'
-        uci commit dhcp
-
     - name: Pin fleet static DHCP reservations
       raw: |
         uci -q delete dhcp.{{ item.name }}
@@ -55,28 +48,3 @@
     name: prometheus-node-exporter-lua
     enabled: true
     state: started
-
-
-# ---------------------------------------------------------------------------
-# TERMINAL TASK — moves the gateway's own LAN IP onto the fleet subnet.
-# ---------------------------------------------------------------------------
-# The fleet lives on 10.0.0.0/16: Tang 10.0.0.5 (Orin's headless LUKS unlock),
-# AdGuard {{ adguard_ip }} (LAN DNS). The gateway MUST serve this subnet, or
-# clevis (bound to http://10.0.0.5:7654) can't unlock the Orin at boot.
-#
-# This reloads the network and DROPS the SSH session as the router's own IP
-# changes ({{ ansible_host }} → {{ lan_gateway }}). It is intentionally the
-# last task in the role so everything above runs over a live connection.
-# Reconnect at {{ lan_gateway }}; on a re-run, point the inventory there too
-# (it still lists the pre-move address). ignore_errors because the connection
-# drop is expected, not a failure.
-- name: Set LAN address on the fleet subnet (reloads network — drops SSH, gateway only)
-  # Flat interim path only — under segmentation, roles/network owns all
-  # addressing and is the terminal, SSH-dropping step instead.
-  when: "'gateways' in group_names and not vlan_segmentation_live"
-  raw: |
-    uci set network.lan.ipaddr='{{ lan_gateway }}'
-    uci set network.lan.netmask='{{ lan_netmask }}'
-    uci commit network
-    /etc/init.d/network reload
-  ignore_errors: true

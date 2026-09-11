@@ -268,21 +268,6 @@ vlans:
     dns: local
     reach_out: [] # internet only; no reach into infra/iot/cameras/trusted
 
-# --- INTERIM flat vars (pre-segmentation) --------------------------------
-# The current router role (tasks/main.yml) still does a FLAT 10.0.0.1/16 via
-# these. They are superseded by `vlans` above once the network role lands;
-# remove them then. Kept so a bench deploy today still produces a working
-# (unsegmented) gateway.
-lan_gateway: "10.0.0.1"
-lan_netmask: "255.255.0.0"
-# Master switch between the flat interim path and full segmentation.
-# true (default since roles/network landed 2026-07-17): roles/network builds
-# bridge-VLANs + per-VLAN DHCP + the firewall matrix, and the wifi role
-# attaches each SSID to its target VLAN. Rollback = set false: the wifi role
-# pins every SSID to flat `lan` and the router role's interim LAN-move task
-# takes over again.
-vlan_segmentation_live: true
-
 # ---------------------------------------------------------------------------
 # Physical port → zone map (roles/network) — decided 2026-07-17.
 # ---------------------------------------------------------------------------
