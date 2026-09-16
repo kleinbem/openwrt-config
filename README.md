@@ -32,5 +32,5 @@ just check ap-upstairs
 ## Directory Structure
 
 - `ansible/`: Core Ansible files.
-  - `inventory.ini`: Host definitions.
+  - `inventory.ini`: Host definitions. **Generated** from `nix-config/inventory.nix` — do not hand-edit.
   - `site.yml`: Main playbook.

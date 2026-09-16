@@ -124,7 +124,7 @@ wifi_networks:
   #    dynamic-VLAN regression #20355; (b) whether WPA3-SAE clients on -W3 get
   #    a VLAN — wpa_psk_file is the WPA2 side, so SAE clients may need
   #    sae_password+vlanid (else those devices use 16CVG/-W2). 16CVG is the
-  #    reliable WPA3 path for trusted regardless. See docs/NETWORK_PLAN.md.
+  #    reliable WPA3 path for trusted regardless. See ../../../openwrt/docs/NETWORK_PLAN.md.
   - name: mpsk_w3
     ssid: "{{ wifi_ssid }}-W3"
     mpsk: true
@@ -163,7 +163,7 @@ wifi_networks:
 
 # ---------------------------------------------------------------------------
 # AdGuard resolver — handed to DHCP clients in every VLAN (option 6).
-# hass-pi, in the infra VLAN. See docs/NETWORK_PLAN.md.
+# hass-pi, in the infra VLAN. See ../../../openwrt/docs/NETWORK_PLAN.md.
 # ---------------------------------------------------------------------------
 adguard_ip: "10.0.0.21" # external AdGuard (hass-pi) — used only when adguard_local is false
 
@@ -199,7 +199,7 @@ netbird_management_url: "" # empty = NetBird default/cloud
 
 # ---------------------------------------------------------------------------
 # VLAN-segmented 10.x — SOURCE OF TRUTH for the network role (to be built).
-# Design + firewall matrix: ../../../docs/NETWORK_PLAN.md.
+# Design + firewall matrix: ../../../openwrt/docs/NETWORK_PLAN.md.
 # The fleet — the Tang MESH (every capable host: .5/.12/.21/.22/nasbook…),
 # AdGuard 10.0.0.21, and the headless-unlock hosts — all live in the `infra`
 # VLAN. Clevis unlock is SSS t=1 (any one Tang server unlocks), so it stays
@@ -213,7 +213,7 @@ netbird_management_url: "" # empty = NetBird default/cloud
 #              hardcoded resolvers can't bypass filtering. (untrusted IoT/etc.)
 #   local    → input REJECT; the router's own unfiltered dnsmasq only, NObody
 #              hijacked — lets a corporate VPN use its own DNS. (work laptop)
-# Enforced by roles/network. Design + matrix: ../../../docs/NETWORK_PLAN.md.
+# Enforced by roles/network. Design + matrix: ../../../openwrt/docs/NETWORK_PLAN.md.
 # ---------------------------------------------------------------------------
 vlans:
   - id: 1

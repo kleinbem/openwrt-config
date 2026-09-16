@@ -31,4 +31,4 @@
 
 ## Immediate Next Tasks for AI
 
-See `../../docs/NETWORK_PLAN.md` — bench-provision → swap runbook.
+See `../../openwrt/docs/NETWORK_PLAN.md` — bench-provision → swap runbook.
