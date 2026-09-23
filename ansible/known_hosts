@@ -1,0 +1,15 @@
+# Pinned SSH host keys for the OpenWrt fleet's dropbear daemons.
+#
+# These match the STABLE per-device host keys baked into each device's
+# firmware image at build time (openwrt-builder's Justfile/build.sh
+# `device` param, keys stored in kleinbem-secrets/openwrt/per-device/) —
+# NOT dropbear's own generate-on-first-boot key, which would churn on
+# every from-scratch reflash and make pinning pointless. See ansible.cfg
+# for why host_key_checking is on despite that historical churn.
+#
+# Regenerate an entry only after actually re-flashing that device with a
+# NEW per-device key (a deliberate rotation, not routine). Format matches
+# `ssh-keyscan` output; both the inventory alias and the bare IP are
+# listed since ansible_host= is an IP and OpenSSH matches literally.
+core-gateway,10.0.0.1 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICeQtqc8zA6y9QdgnudDTwmBlPmw3hUyw5BDCwS0QyQW
+ap-upstairs,10.0.0.2 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINBwlawuIX3ssRRF0Z42StD+EdXjrf6YQMZ1wNMkKhLV
