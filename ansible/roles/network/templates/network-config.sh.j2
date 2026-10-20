@@ -1,12 +1,19 @@
 #!/bin/sh
 # Rendered by roles/network — do not edit on the router.
-# Builds the VLAN-segmented 10.x from group_vars `vlans` + `port_maps`
+# Builds the VLAN-segmented 10.x from group_vars `vlans` (all.yml) + the
+# board's `port_map` (group_vars/board_<board>.yml)
 # (design + firewall matrix: docs/NETWORK_PLAN.md).
 # Commits only — the network restart that applies the new addressing (and
 # drops SSH) is a separate, terminal Ansible task.
 set -e
 {% set is_gw = 'gateways' in group_names %}
-{% set pm = port_maps.gateways if is_gw else port_maps.access_points %}
+{# port_map comes from this board's group_vars/board_<board>.yml #}
+{% set pm = port_map %}
+{# Wireless backhaul: the pinned mesh netdev is a tagged trunk port; a mesh
+   NODE has no wired trunk (wired + wireless uplink = bridge loop). #}
+{% set bh = (wifi_backhaul | default('none')) in ['gate', 'node'] %}
+{% set trunk_ports = [] if (wifi_backhaul | default('none')) == 'node' else pm.trunk %}
+{% set all_trunks = trunk_ports + ([wifi_backhaul_ifname] if bh else []) %}
 
 # --- bridge device: all access ports + the tagged trunk -------------------
 BR=$(uci show network | sed -n "s/^network\.\([^.=]*\)\.name='br-lan'$/\1/p" | head -n1)
@@ -20,8 +27,15 @@ uci set "network.$BR.vlan_filtering"='1'
 # flooding every port — matters for cast/streaming (Chromecast, AirPlay) and
 # keeps the mDNS-reflected discovery traffic from spraying the whole bridge.
 uci set "network.$BR.igmp_snooping"='1'
+{% if bh %}
+# Backhaul present: STP guards against an accidental second uplink (a node
+# that gets its trunk port plugged in, or two gates on one segment).
+uci set "network.$BR.stp"='1'
+{% else %}
+uci -q delete "network.$BR.stp" || true
+{% endif %}
 uci -q delete "network.$BR.ports" || true
-{% for port in (pm.untagged.keys() | list) + pm.trunk %}
+{% for port in (pm.untagged.keys() | list) + all_trunks %}
 uci add_list "network.$BR.ports"='{{ port }}'
 {% endfor %}
 
@@ -34,13 +48,23 @@ uci set "network.$S.vlan"='{{ vlan.id }}'
 {% for port, zone in pm.untagged.items() if zone == vlan.name %}
 uci add_list "network.$S.ports"='{{ port }}:u*'
 {% endfor %}
-{% for port in pm.trunk %}
+{% for port in all_trunks %}
 uci add_list "network.$S.ports"='{{ port }}:t'
 {% endfor %}
 {% endfor %}
 
 # --- interfaces: one per VLAN (replaces the flat `lan`) -------------------
 uci -q delete network.lan || true
+{% if bh %}
+# Attachment point for the 802.11s mesh netdev (roles/wifi sets
+# wireless.backhaul.network='backhaul'): bare br-lan membership, no address —
+# the bridge-vlan entries above make it a tagged trunk for every VLAN.
+uci set network.backhaul=interface
+uci set network.backhaul.device='br-lan'
+uci set network.backhaul.proto='none'
+{% else %}
+uci -q delete network.backhaul || true
+{% endif %}
 {% for vlan in vlans %}
 uci set network.{{ vlan.name }}=interface
 uci set network.{{ vlan.name }}.device='br-lan.{{ vlan.id }}'
@@ -49,9 +73,10 @@ uci set network.{{ vlan.name }}.proto='static'
 uci set network.{{ vlan.name }}.ipaddr='{{ vlan.gateway }}'
 uci set network.{{ vlan.name }}.netmask='255.255.255.0'
 {% elif vlan.name == 'infra' %}
-# AP management address — routes + resolves via the gateway/AdGuard.
+# AP management address (generated per-host `mgmt_ip` = inventory.nix ip;
+# every AP gets its own) — routes + resolves via the gateway/AdGuard.
 uci set network.{{ vlan.name }}.proto='static'
-uci set network.{{ vlan.name }}.ipaddr='{{ ap_mgmt_ip }}'
+uci set network.{{ vlan.name }}.ipaddr='{{ mgmt_ip }}'
 uci set network.{{ vlan.name }}.netmask='255.255.255.0'
 uci set network.{{ vlan.name }}.gateway='{{ vlan.gateway }}'
 uci -q delete network.{{ vlan.name }}.dns || true
@@ -131,8 +156,11 @@ while uci -q delete firewall.@forwarding[0]; do :; done
 # Software/HW flow-offloading bypasses the qdisc, which would defeat SQM/cake
 # (roles/qos) — and cake's latency control matters more than raw throughput
 # for the WFH calls at home WAN speeds (the CPU handles NAT fine there). HW
-# offload additionally needs mem=2048M or it drops packets (MT7988 bug). If a
-# future WAN is fast enough to need offload, turn SQM off and flip these.
+# offload on MT7988 was also the only reason for the former mem=2048M boot
+# cap (PPE DMA + 4 GiB drops packets, upstream-unresolved as of 2026-10); the
+# boards now boot with the full 4 GiB, so enabling HW offload later means
+# re-testing that combination first. If a future WAN is fast enough to need
+# offload, turn SQM off and flip these.
 uci set firewall.@defaults[0].drop_invalid='1'
 uci set firewall.@defaults[0].synflood_protect='1'
 uci set firewall.@defaults[0].flow_offloading='0'

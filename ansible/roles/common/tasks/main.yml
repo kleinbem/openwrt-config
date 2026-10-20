@@ -17,6 +17,24 @@
 # remote_syslog_ip in group_vars to enable (default empty = local logging
 # only, a safe no-op until you have an endpoint). Also bump the local ring
 # buffer so recent logs survive between polls.
+# Sanity: the kernel sees the RAM the board has (board group_vars
+# `expected_ram_mib`, 15 % tolerance for reserved/firmware memory) and no
+# `mem=` limit is on the cmdline. Catches a stale `mem=2048M` surviving in a
+# saved U-Boot environment after the 2026-10-20 removal from uEnv.txt, or a
+# board with a bad DIMM. Also prints MemTotal so the first 4 GiB boot leaves
+# a record in the run log.
+- name: Verify the board sees its full RAM (no stale mem= limit)
+  when: expected_ram_mib is defined
+  raw: |
+    kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+    min=$(( {{ expected_ram_mib }} * 1024 * 85 / 100 ))
+    echo "MemTotal: ${kb} kB (expected ~$(( {{ expected_ram_mib }} * 1024 )) kB)"
+    if grep -qE '(^| )mem=' /proc/cmdline; then
+      echo "cmdline carries a mem= limit: $(cat /proc/cmdline)"; exit 2
+    fi
+    [ "$kb" -ge "$min" ] || { echo "MemTotal below the expected minimum ${min} kB — stale mem= in U-Boot env or bad RAM?"; exit 3; }
+  changed_when: false
+
 - name: Configure remote syslog + local log buffer
   raw: |
     uci set system.@system[0].log_size='128'
