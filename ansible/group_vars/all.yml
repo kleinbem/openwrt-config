@@ -211,9 +211,10 @@ adguard_local: true
 # WireGuard (roles/wireguard) — OPTIONAL edge VPN / break-glass (NetBird
 # already covers normal remote access). Safe no-op until keys are set.
 # Generate: `wg genkey | tee server.key | wg pubkey > server.pub`; put the
-# private key in sops (wg_server_private_key) and add peers with their pubkeys.
+# private key in sops (openwrt/gateway.yaml: wg_server_private_key) and add
+# peers with their pubkeys.
 # ---------------------------------------------------------------------------
-wg_server_private_key: "{{ _secret_vars.wg_server_private_key | default('') }}"
+wg_server_private_key: "" # gateway-only: set in group_vars/gateways.yml
 wg_listen_port: 51820
 wg_subnet: "10.9.0.1"
 wg_reach: [infra, trusted] # zones VPN clients may reach
@@ -321,8 +322,9 @@ vlans:
 # http://10.0.0.5:7654) could no longer auto-unlock LUKS.
 #
 # The lease list itself (names, IPs, MACs) lives in kleinbem-secrets/
-# openwrt/shared.yaml — MACs are device fingerprints and stay out of this
-# public repo. Subnet check still applies: if the OpenWrt LAN is NOT
+# openwrt/gateway.yaml (gateway-only, loaded in group_vars/gateways.yml) —
+# MACs are device fingerprints and stay out of this public repo and off the
+# plain APs. Subnet check still applies: if the OpenWrt LAN is NOT
 # 10.0.0.0/16, both the lease IPs AND the Orin's clevis binding must move
 # to the new subnet together.
-static_leases: "{{ _secret_vars.static_leases }}"
+static_leases: [] # gateway-only: set in group_vars/gateways.yml
