@@ -32,8 +32,8 @@ qos_linklayer: "ethernet"
 qos_overhead: 44
 
 # ---------------------------------------------------------------------------
-# banIP feeds (roles/banip) — high-signal, modest-size only (boards run 2 GiB;
-# banIP holds sets in RAM). Add feeds cautiously and watch memory with
+# banIP feeds (roles/banip) — high-signal, modest-size only (banIP holds sets
+# in RAM; set size costs CPU per packet). Add feeds cautiously and watch memory with
 # `banip -s`. NOT the huge aggregate/country lists.
 # ---------------------------------------------------------------------------
 banip_feeds:
@@ -85,8 +85,40 @@ ui_fleet_links:
 # `ft` = 802.11r fast roaming between the two BPI-R4s — off for iot/cameras
 # (cheap clients often mis-handle FT and those devices don't roam anyway).
 wifi_country: "IE"
-# Per-band channel widths for the BE14000 (MT7996, Wi-Fi 7 / EHT).
-wifi_htmodes: { 2g: "EHT20", 5g: "EHT160", 6g: "EHT320" }
+# Per-band channel widths (`wifi_htmodes`) and the optional fixed-channel
+# plan (`wifi_channel_plan`) are BOARD-specific: see group_vars/board_<board>.yml
+# (the inventory generator puts every router in a `board_<board>` group from
+# inventory.nix's `board`). Wi-Fi 7 EHT modes on the BPI-R4, HT20/VHT80 on
+# the Wi-Fi 5 Orbi units.
+#
+# Minimum per-radio transmit power the wifi role asserts after applying (dBm).
+# Catches the mt76/BE14000 EEPROM trap where every radio comes up at 6 dBm
+# (same-room speed fine, nothing one wall away): the usual root cause behind
+# "the BPI-R4's coverage is bad". `wifi_txpower_check: false` bypasses it for
+# a bench experiment.
+wifi_min_txpower_dbm: 15
+wifi_txpower_check: true
+
+# ---------------------------------------------------------------------------
+# Wireless backhaul (roles/wifi + roles/network) — Orbi-style topology under
+# OpenWrt: ONE unit is wired to a BPI-R4 (the mesh *gate*), the others hang
+# off it over an encrypted 802.11s mesh (mesh *nodes*) and need no Ethernet.
+# The mesh interface joins br-lan as a TAGGED trunk, so every VLAN + the MPSK
+# layout works unchanged over the air. Role per host comes from inventory.nix
+# tags (`mesh-gate` → group mesh_gates, `mesh-node` → mesh_nodes; see
+# group_vars/mesh_*.yml); which radio carries it is a board property
+# (group_vars/board_<board>.yml: wifi_backhaul_band/_radio_index/_channel).
+# Nodes get NO wired trunk port (a wired + wireless uplink would loop the
+# bridge); STP is enabled on br-lan wherever a backhaul exists as insurance.
+# `none` = plain wired AP / router (the BPI-R4s).
+# ---------------------------------------------------------------------------
+wifi_backhaul: none
+wifi_backhaul_ifname: mesh0 # pinned so bridge-vlan can list it as a tagged port
+wifi_backhaul_mesh_id: kleinbem-backhaul # visible in beacons anyway, not secret
+# SAE passphrase for the mesh — add `wifi_backhaul_key` to
+# kleinbem-secrets/openwrt/shared.yaml (`just secrets::edit openwrt/shared.yaml`);
+# roles/wifi refuses to bring up a backhaul with an empty key.
+wifi_backhaul_key: "{{ _secret_vars.wifi_backhaul_key | default('') }}"
 wifi_networks:
   # ── MIGRATION-SAFE layout (2026-07-18) ────────────────────────────────────
   # Rather than turn the existing 16CVG into MPSK (which would risk every
@@ -269,21 +301,15 @@ vlans:
     reach_out: [] # internet only; no reach into infra/iot/cameras/trusted
 
 # ---------------------------------------------------------------------------
-# Physical port → zone map (roles/network) — decided 2026-07-17.
+# Physical port → zone map (roles/network) — BOARD-specific, so it lives in
+# group_vars/board_<board>.yml as `port_map` (decided 2026-07-17 for the
+# BPI-R4 pair: lan1 = infra, lan2 = trusted, lan3 = cameras, SFP+ = tagged
+# trunk). WAN stays on the uci-defaults iface (`wan_iface`, same file; NOT
+# managed here). An AP's management address on the infra VLAN is the
+# generated per-host `mgmt_ip` (= its inventory.nix ip), never a shared var:
+# two APs must not collide. Bench bootstrap overrides `ansible_host` only,
+# so `mgmt_ip` stays correct while the board is still reached at 192.168.1.1.
 # ---------------------------------------------------------------------------
-# WAN stays on the uci-defaults iface (inventory wan_iface=eth1; NOT managed
-# here). The SFP+ link between the two BPI-R4s is a tagged trunk carrying all
-# VLANs. DSA port names (lan1…, sfp2) are the expected BPI-R4 names — bench-
-# verify once with `ls /sys/class/net` on the flashed board and adjust here
-# if the hardware disagrees.
-port_maps:
-  gateways: # core-gateway, downstairs
-    trunk: [sfp2]
-    untagged: { lan1: infra, lan2: trusted, lan3: cameras } # cameras = wired cams
-  access_points: # ap-upstairs (and future ap-<location> extenders)
-    trunk: [sfp2]
-    untagged: { lan1: infra, lan2: trusted, lan3: cameras }
-ap_mgmt_ip: "10.0.0.2" # ap-upstairs' address on the infra VLAN
 
 # ---------------------------------------------------------------------------
 # Static DHCP reservations

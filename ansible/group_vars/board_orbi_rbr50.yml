@@ -1,0 +1,46 @@
+---
+# Netgear Orbi RBR50 / RBS50 v1 (Qualcomm IPQ4019, Wi-Fi 5, OpenWrt
+# ipq40xx/generic). Access points only — the BPI-R4s route. Both models share
+# one DTS in OpenWrt (same ports + radios), so board_orbi_rbs50.yml is a
+# symlink to this file. Group membership is generated from inventory.nix
+# (`board = "orbi-rbr50"` / `"orbi-rbs50"`).
+#
+# Hardware (verified 2026-10-20 on the RBR50 at 10.0.0.1: v1, 4 GB eMMC):
+#   radio: IPQ4019 2.4 GHz 2x2 · IPQ4019 5 GHz 2x2 · QCA9984 5 GHz 4x4
+#   ports: lan1 lan2 lan3 + wan (1 GbE), no SFP.
+# v2 units (NAND, no USB port, `artmtd -r hw_revision` = 02) are NOT in
+# OpenWrt stable yet (upstream PR #22321) — don't flash a v1 image on one.
+
+# No routing role here; kept for the shared capture.yml / qos templates.
+wan_iface: wan
+lan_iface: br-lan
+expected_ram_mib: 512
+
+# Wi-Fi 5: ath10k rejects EHT/HE modes. 80 MHz on both 5 GHz radios.
+wifi_htmodes: { 2g: "HT20", 5g: "VHT80" }
+# Two 5 GHz radios on one board — split them so they don't both pick the
+# same channel: the DFS block 100–112 for clients, low band 36–48 for the
+# backhaul (ETSI; 149+ is 25 mW SRD in IE, useless). Client radios take these
+# in uci order; the backhaul radio (below) is skipped by the plan and takes
+# wifi_backhaul_channel instead. With no backhaul both client radios are
+# served from this list.
+wifi_channel_plan: { 5g: [100, 36] }
+
+# Wireless backhaul radio: the 4x4 QCA9984 — Orbi's own backhaul radio. In
+# OpenWrt's uci order the PCIe QCA9984 enumerates after the two on-SoC
+# IPQ4019 radios, i.e. it is the SECOND 5 GHz radio (index 1). Bench-verify
+# once (`iw phy | grep -B2 -A2 'Wiphy\|MHz'`, or compare 4x4 vs 2x2 stream
+# counts) and flip the index if the order differs. Non-DFS channel on purpose:
+# a radar hit would otherwise drop every satellite at once.
+wifi_backhaul_band: 5g
+wifi_backhaul_radio_index: 1
+wifi_backhaul_channel: 36
+wifi_backhaul_htmode: VHT80
+
+# Orbi as a wired AP: the port labelled "Internet"/WAN carries the tagged
+# trunk back to a BPI-R4; the three LAN ports are untagged access ports like
+# on the BPI-R4s. Port labels come from OpenWrt's rbx50 DTS — bench-verify
+# with `ls /sys/class/net` after the first flash.
+port_map:
+  trunk: [wan]
+  untagged: { lan1: infra, lan2: trusted, lan3: cameras }

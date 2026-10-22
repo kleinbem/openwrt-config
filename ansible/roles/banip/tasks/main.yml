@@ -4,9 +4,9 @@
 # from reputation blocklists). Cheap defence for an internet-facing gateway:
 # stops scanners / botnet / brute-force sources before they reach anything.
 # ---------------------------------------------------------------------------
-# Gateway only (it's a WAN-edge control). RAM-conscious: the boards run at
-# 2 GiB (see the mem=2048M note), and banIP holds its sets in memory, so we
-# enable only a few HIGH-SIGNAL, modest-size feeds — NOT the huge aggregate
+# Gateway only (it's a WAN-edge control). RAM-conscious: banIP holds its sets
+# in memory (and nftables set lookups cost CPU per packet), so we enable only
+# a few HIGH-SIGNAL, modest-size feeds — NOT the huge aggregate
 # or country lists, which would balloon RAM and CPU on a router.
 #
 #   firehol_level1 — spamhaus DROP + dshield + fullbogons: the highest-signal,

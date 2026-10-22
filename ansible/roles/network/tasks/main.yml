@@ -2,7 +2,8 @@
 # ---------------------------------------------------------------------------
 # Network/VLAN role — segments the flat 10.x per ../../../../../openwrt/docs/NETWORK_PLAN.md.
 # ---------------------------------------------------------------------------
-# Consumes the `vlans` + `port_maps` source of truth in group_vars/all.yml.
+# Consumes the `vlans` source of truth in group_vars/all.yml plus the board's
+# `port_map` (group_vars/board_<board>.yml) and the generated per-host `mgmt_ip`.
 # Gateway: per-VLAN interfaces + DHCP pools (AdGuard via option 6) + the full
 # firewall zone matrix. AP: same bridge-VLANs, single mgmt IP on infra, L2
 # bridge for everything else — its SSIDs tag clients into the right VLAN over
@@ -54,8 +55,8 @@
 
 # ---------------------------------------------------------------------------
 # TERMINAL TASK — applies the new addressing; DROPS SSH on both hosts as the
-# management IP moves onto the infra VLAN (gateway → 10.0.0.1, AP → .2).
-# Reconnect on an infra access port (see port_maps); after bench, point the
+# management IP moves onto the infra VLAN (gateway → 10.0.0.1, APs → their
+# mgmt_ip). Reconnect on an infra access port (see port_map); after bench, point the
 # inventory at the new addresses. ignore_errors: the drop is expected.
 # ---------------------------------------------------------------------------
 - name: Restart network (TERMINAL — drops SSH, reconnect on infra VLAN)

@@ -1,0 +1,8 @@
+---
+# inventory.nix tag `mesh-node`: free-standing Orbi satellites. Uplink is the
+# 802.11s backhaul only — the board's wired trunk port is NOT configured (it
+# would loop the bridge if someone plugs it in); the lan access ports stay
+# usable for nearby wired devices. Management IP (mgmt_ip) is reached over
+# the mesh once provisioned; the first bench run still happens wired at
+# 192.168.1.1 like every other board.
+wifi_backhaul: node

@@ -1,12 +1,16 @@
 ---
 # ---------------------------------------------------------------------------
-# Wi-Fi radio role — tri-band BE14000 (MT7996) on both BPI-R4s.
+# Wi-Fi radio role — every OpenWrt AP in the fleet: the tri-band BE14000
+# (MT7996) on the BPI-R4s and the Wi-Fi 5 radios of the Orbi units.
 # ---------------------------------------------------------------------------
 # Spec (locked 2026-07): SSID family derived from the existing secret SSID
 # (main network keeps its current name + password so clients survive the
 # router swap), country IE, WPA3/SAE (pure SAE forced on 6 GHz), 802.11r
-# fast roaming between gateway and upstairs AP, DAWN for client steering.
-# SSID→VLAN map + bands live in group_vars/all.yml (`wifi_networks`).
+# fast roaming between all APs, DAWN for client steering.
+# SSID→VLAN map + bands live in group_vars/all.yml (`wifi_networks`); channel
+# widths + the fixed-channel plan per board in group_vars/board_<board>.yml.
+# Wireless backhaul (802.11s mesh gate/node for the free-standing Orbi
+# satellites): `wifi_backhaul` from group_vars/mesh_*.yml, radio from the board.
 #
 # The uci logic runs as one rendered shell script instead of per-setting raw
 # tasks: it must discover radios at runtime (a board without the Wi-Fi NIC
@@ -47,6 +51,35 @@
   ansible.builtin.file:
     path: /tmp/wifi-config.sh
     state: absent
+
+# The mt76/BE14000 EEPROM trap: every radio silently comes up at 6 dBm (about
+# 1/50 of a normal AP), fine in the same room and nothing one wall away — the
+# usual root cause behind "the BPI-R4's coverage is bad". Assert each AP
+# interface reports ≥ wifi_min_txpower_dbm once hostapd is up. A board
+# without radios passes trivially; rc 1 = radios still coming up (retried),
+# rc 2 = power really is low (fails right away).
+- name: Verify radios transmit at a sane power
+  when: wifi_txpower_check | default(true)
+  raw: |
+    uci -q show wireless | grep -q '=wifi-device$' || { echo "no radios — nothing to check"; exit 0; }
+    list=$(iw dev 2>/dev/null | awk '
+      /^[[:space:]]*Interface/ { i = $2; ap = 0 }
+      /^[[:space:]]*type AP/   { ap = 1 }
+      /^[[:space:]]*txpower/   { if (ap) print i, int($2) }')
+    [ -n "$list" ] || { echo "no AP interface up yet"; exit 1; }
+    low=$(echo "$list" | awk -v min='{{ wifi_min_txpower_dbm }}' '$2 < min')
+    if [ -n "$low" ]; then
+      echo "TX power below {{ wifi_min_txpower_dbm }} dBm — mt76 EEPROM/regdb trap? (iface dBm):"
+      echo "$low"
+      exit 2
+    fi
+    echo "$list"
+  register: wifi_txpower
+  changed_when: false
+  failed_when: wifi_txpower.rc != 0
+  retries: 6
+  delay: 5
+  until: wifi_txpower.rc != 1
 
 # DAWN (in the firmware image) coordinates the two APs over the LAN and
 # steers clients to the better one; 802.11r above makes that steer fast.

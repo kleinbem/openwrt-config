@@ -1,10 +1,46 @@
 #!/bin/sh
 # Rendered by the wifi role ({{ template_path | default('roles/wifi') }}) — do not edit on the router.
 # Band-aware: discovers whichever radios this board actually has (the BE14000
-# NIC exposes 2g/5g/6g; a board without the module simply has none) and
-# creates each SSID only on its allowed bands. Safe to re-run: the role owns
-# /etc/config/wireless outright and rebuilds every wifi-iface section.
+# NIC exposes 2g/5g/6g; an Orbi has 2g + two 5g; a board without the module
+# simply has none) and creates each SSID only on its allowed bands. Safe to
+# re-run: the role owns /etc/config/wireless outright and rebuilds every
+# wifi-iface section. Channel widths + the fixed-channel plan come from the
+# board's group_vars/board_<board>.yml.
 set -e
+
+# Fixed-channel plan (`wifi_channel_plan`, band → list of channels): radios
+# of a band take the listed channels in uci order; a band without a plan, or
+# more radios than channels, falls back to 'auto'. Needed where one board has
+# two radios on the same band (Orbi: IPQ4019 + QCA9984, both 5 GHz) so they
+# don't both auto-pick the same channel. Sets CH; must NOT run in a subshell
+# (the per-band counters n_<band> live in this shell).
+{% set bh = (wifi_backhaul | default('none')) in ['gate', 'node'] %}
+{% if bh %}
+{% if not (wifi_backhaul_key | default('')) %}
+echo "wifi-config: wifi_backhaul={{ wifi_backhaul }} but wifi_backhaul_key is empty — add it to kleinbem-secrets/openwrt/shared.yaml" >&2
+exit 1
+{% endif %}
+# Wireless backhaul ({{ wifi_backhaul }}): one radio is reserved for an
+# encrypted 802.11s mesh point (board: {{ wifi_backhaul_band }} radio #{{ wifi_backhaul_radio_index }},
+# channel {{ wifi_backhaul_channel }}) and carries NO client SSIDs. Its netdev name is pinned
+# ({{ wifi_backhaul_ifname }}) so roles/network can list it as a tagged trunk
+# port of br-lan — every VLAN rides the mesh. The `backhaul` interface it
+# attaches to is created by roles/network (br-lan, proto none).
+BACKHAUL_RADIO=""
+{% endif %}
+pick_channel() {
+  CH=auto
+  case "$1" in
+{% for band, chans in (wifi_channel_plan | default({})).items() %}
+    {{ band }})
+      eval "i=\${n_{{ band }}:-0}"
+      set -- {{ chans | join(' ') }}
+      if [ "$i" -lt $# ]; then shift "$i"; CH=$1; fi
+      eval "n_{{ band }}=$((i + 1))"
+      ;;
+{% endfor %}
+  esac
+}
 
 # Generate wifi-device sections for any radios not yet in /etc/config/wireless
 # (first boot after flash). No-op when they already exist.
@@ -23,8 +59,30 @@ fi
 for radio in $RADIOS; do
   band=$(uci -q get "wireless.$radio.band")
   uci set "wireless.$radio.country"='{{ wifi_country }}'
-  uci set "wireless.$radio.channel"='auto'
   uci set "wireless.$radio.disabled"='0'
+{% if bh %}
+  if [ "$band" = "{{ wifi_backhaul_band }}" ]; then
+    k=${seen_backhaul_band:-0}
+    [ "$k" -eq {{ wifi_backhaul_radio_index }} ] && BACKHAUL_RADIO=$radio
+    seen_backhaul_band=$((k + 1))
+  fi
+  if [ "$radio" = "$BACKHAUL_RADIO" ]; then
+    uci set "wireless.$radio.channel"='{{ wifi_backhaul_channel }}'
+    uci set "wireless.$radio.htmode"='{{ wifi_backhaul_htmode }}'
+    uci set wireless.backhaul=wifi-iface
+    uci set wireless.backhaul.device="$radio"
+    uci set wireless.backhaul.mode='mesh'
+    uci set wireless.backhaul.ifname='{{ wifi_backhaul_ifname }}'
+    uci set wireless.backhaul.mesh_id={{ wifi_backhaul_mesh_id | quote }}
+    uci set wireless.backhaul.encryption='sae'
+    uci set wireless.backhaul.key={{ wifi_backhaul_key | quote }}
+    uci set wireless.backhaul.mesh_fwding='1'
+    uci set wireless.backhaul.network='backhaul'
+    continue
+  fi
+{% endif %}
+  pick_channel "$band"
+  uci set "wireless.$radio.channel"="$CH"
   case "$band" in
 {% for band, htmode in wifi_htmodes.items() %}
     {{ band }}) uci set "wireless.$radio.htmode"='{{ htmode }}' ;;
@@ -100,5 +158,11 @@ for radio in $RADIOS; do
 {% endfor %}
 done
 
+{% if bh %}
+if [ -z "$BACKHAUL_RADIO" ]; then
+  echo "wifi-config: no {{ wifi_backhaul_band }} radio #{{ wifi_backhaul_radio_index }} for the backhaul on this board — check wifi_backhaul_radio_index" >&2
+  exit 1
+fi
+{% endif %}
 uci commit wireless
 wifi reload
