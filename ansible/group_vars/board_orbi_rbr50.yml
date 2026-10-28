@@ -1,8 +1,9 @@
 ---
 # Netgear Orbi RBR50 / RBS50 v1 (Qualcomm IPQ4019, Wi-Fi 5, OpenWrt
 # ipq40xx/generic). Access points only — the BPI-R4s route. Both models share
-# one DTS in OpenWrt (same ports + radios), so board_orbi_rbs50.yml is a
-# symlink to this file. Group membership is generated from inventory.nix
+# the radios but NOT the ports (router DTS: wan + lan1-3; satellite DTS:
+# lan1-4, no wan), so board_orbi_rbs50.yml is its own file — keep the two in
+# sync apart from port_map. Group membership is generated from inventory.nix
 # (`board = "orbi-rbr50"` / `"orbi-rbs50"`).
 #
 # Hardware (verified 2026-10-20 on the RBR50 at 10.0.0.1: v1, 4 GB eMMC):
@@ -18,22 +19,25 @@ expected_ram_mib: 512
 
 # Wi-Fi 5: ath10k rejects EHT/HE modes. 80 MHz on both 5 GHz radios.
 wifi_htmodes: { 2g: "HT20", 5g: "VHT80" }
-# Two 5 GHz radios on one board — split them so they don't both pick the
-# same channel: the DFS block 100–112 for clients, low band 36–48 for the
-# backhaul (ETSI; 149+ is 25 mW SRD in IE, useless). Client radios take these
-# in uci order; the backhaul radio (below) is skipped by the plan and takes
-# wifi_backhaul_channel instead. With no backhaul both client radios are
-# served from this list.
+# Two 5 GHz radios on one board, split by band in the DTS
+# (qcom-ipq4019-rbr50/rbs50.dts, OpenWrt 25.12):
+#   IPQ4019 wifi1 (a800000.wifi, 2x2): full 5 GHz, used for the low band
+#   QCA9984 on PCIe (4x4): ieee80211-freq-limit 5470–5875 MHz = ch 100+ only
+# So the QCA9984 can't do channel 36. The backhaul takes the IPQ4019 radio on
+# the low band (non-DFS on purpose: a radar hit would otherwise drop every
+# satellite at once; 149+ is 25 mW SRD in IE, useless); the 4x4 QCA9984 serves
+# clients on the DFS block 100–112, where a radar hit only moves clients.
+# Client radios take wifi_channel_plan in uci order; the backhaul radio is
+# skipped and takes wifi_backhaul_channel instead. (Every Orbi runs a
+# backhaul; without one, the QCA9984 could land on 36 and fail.)
 wifi_channel_plan: { 5g: [100, 36] }
 
-# Wireless backhaul radio: the 4x4 QCA9984 — Orbi's own backhaul radio. In
-# OpenWrt's uci order the PCIe QCA9984 enumerates after the two on-SoC
-# IPQ4019 radios, i.e. it is the SECOND 5 GHz radio (index 1). Bench-verify
-# once (`iw phy | grep -B2 -A2 'Wiphy\|MHz'`, or compare 4x4 vs 2x2 stream
-# counts) and flip the index if the order differs. Non-DFS channel on purpose:
-# a radar hit would otherwise drop every satellite at once.
+# Backhaul radio picked by its uci `path` (glob), not by enumeration order:
+# phy numbering between the on-SoC (AHB) and PCIe radios isn't fixed. The
+# index stays as the fallback for boards without a path.
 wifi_backhaul_band: 5g
-wifi_backhaul_radio_index: 1
+wifi_backhaul_radio_path: "*a800000.wifi"
+wifi_backhaul_radio_index: 0
 wifi_backhaul_channel: 36
 wifi_backhaul_htmode: VHT80
 

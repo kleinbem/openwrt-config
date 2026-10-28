@@ -21,7 +21,7 @@ echo "wifi-config: wifi_backhaul={{ wifi_backhaul }} but wifi_backhaul_key is em
 exit 1
 {% endif %}
 # Wireless backhaul ({{ wifi_backhaul }}): one radio is reserved for an
-# encrypted 802.11s mesh point (board: {{ wifi_backhaul_band }} radio #{{ wifi_backhaul_radio_index }},
+# encrypted 802.11s mesh point (board: {{ wifi_backhaul_band }} radio {{ wifi_backhaul_radio_path | default('') or '#' ~ wifi_backhaul_radio_index }},
 # channel {{ wifi_backhaul_channel }}) and carries NO client SSIDs. Its netdev name is pinned
 # ({{ wifi_backhaul_ifname }}) so roles/network can list it as a tagged trunk
 # port of br-lan — every VLAN rides the mesh. The `backhaul` interface it
@@ -62,9 +62,16 @@ for radio in $RADIOS; do
   uci set "wireless.$radio.disabled"='0'
 {% if bh %}
   if [ "$band" = "{{ wifi_backhaul_band }}" ]; then
+{% if wifi_backhaul_radio_path | default('') %}
+    # Picked by uci path: enumeration order of on-SoC vs PCIe radios isn't fixed.
+    case "$(uci -q get "wireless.$radio.path")" in
+      {{ wifi_backhaul_radio_path }}) BACKHAUL_RADIO=$radio ;;
+    esac
+{% else %}
     k=${seen_backhaul_band:-0}
     [ "$k" -eq {{ wifi_backhaul_radio_index }} ] && BACKHAUL_RADIO=$radio
     seen_backhaul_band=$((k + 1))
+{% endif %}
   fi
   if [ "$radio" = "$BACKHAUL_RADIO" ]; then
     uci set "wireless.$radio.channel"='{{ wifi_backhaul_channel }}'
@@ -160,7 +167,11 @@ done
 
 {% if bh %}
 if [ -z "$BACKHAUL_RADIO" ]; then
+{% if wifi_backhaul_radio_path | default('') %}
+  echo "wifi-config: no {{ wifi_backhaul_band }} radio with path {{ wifi_backhaul_radio_path }} for the backhaul — check wifi_backhaul_radio_path (uci show wireless | grep path)" >&2
+{% else %}
   echo "wifi-config: no {{ wifi_backhaul_band }} radio #{{ wifi_backhaul_radio_index }} for the backhaul on this board — check wifi_backhaul_radio_index" >&2
+{% endif %}
   exit 1
 fi
 {% endif %}

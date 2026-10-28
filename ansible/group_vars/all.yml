@@ -107,7 +107,7 @@ wifi_txpower_check: true
 # layout works unchanged over the air. Role per host comes from inventory.nix
 # tags (`mesh-gate` → group mesh_gates, `mesh-node` → mesh_nodes; see
 # group_vars/mesh_*.yml); which radio carries it is a board property
-# (group_vars/board_<board>.yml: wifi_backhaul_band/_radio_index/_channel).
+# (group_vars/board_<board>.yml: wifi_backhaul_band/_radio_path/_channel).
 # Nodes get NO wired trunk port (a wired + wireless uplink would loop the
 # bridge); STP is enabled on br-lan wherever a backhaul exists as insurance.
 # `none` = plain wired AP / router (the BPI-R4s).
