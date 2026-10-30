@@ -29,6 +29,14 @@ just configure core-gateway
 just check ap-upstairs
 ```
 
+### Render Templates (no router needed)
+
+Renders every role template for each host with dummy secrets into `.render/` and shellchecks the generated scripts. CI runs the same.
+
+```bash
+just render-check
+```
+
 ## Directory Structure
 
 - `ansible/`: Core Ansible files.

@@ -45,6 +45,15 @@ jobs:
       - name: Ansible syntax check
         run: ansible-playbook -i ansible/inventory.ini ansible/site.yml --syntax-check
 
+      - name: Render templates + shellcheck the generated scripts
+        # Same as `just render-check`: every role template per inventory host
+        # with ci/dummy-secrets.yml, localhost only, never a router.
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          ansible-playbook -i ansible/inventory.ini ci/render-templates.yml -e @ci/dummy-secrets.yml
+          # SC2016: a literal $ inside single quotes is the correctly quoted dummy secret.
+          shellcheck -s sh -e SC2016 .render/*/*.sh
+
       - name: shellcheck (tracked shell scripts)
         run: |
           # apt's shellcheck; skip cleanly when there are no shell scripts.
