@@ -310,10 +310,9 @@ vlans:
 
 # ---------------------------------------------------------------------------
 # Physical port → zone map (roles/network) — BOARD-specific, so it lives in
-# group_vars/board_<board>.yml as `port_map` (decided 2026-07-17 for the
-# BPI-R4 pair: lan1 = infra, lan2 = trusted, lan3 = cameras, SFP+ = tagged
-# trunk). WAN stays on the uci-defaults iface (`wan_iface`, same file; NOT
-# managed here). An AP's management address on the infra VLAN is the
+# group_vars/board_<board>.yml as `port_map` (BPI-R4 pair: lan1 = infra,
+# lan2 = trusted, lan3 = cameras, sfp-lan = tagged trunk). WAN stays on the
+# uci-defaults iface (`wan_iface` = sfp-wan, same file; NOT managed here). An AP's management address on the infra VLAN is the
 # generated per-host `mgmt_ip` (= its inventory.nix ip), never a shared var:
 # two APs must not collide. Bench bootstrap overrides `ansible_host` only,
 # so `mgmt_ip` stays correct while the board is still reached at 192.168.1.1.
