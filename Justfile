@@ -36,6 +36,14 @@ configure target:
 check target:
     ansible-playbook -i ansible/inventory.ini ansible/site.yml --limit {{target}} --check --diff
 
+# Render every role template per host with dummy secrets (never touches a
+# router) and shellcheck the generated uci scripts. CI runs the same.
+# SC2016: a literal $ inside single quotes is the correctly quoted dummy secret.
+render-check:
+    rm -rf .render
+    ansible-playbook -i ansible/inventory.ini ci/render-templates.yml -e @ci/dummy-secrets.yml
+    shellcheck -s sh -e SC2016 .render/*/*.sh
+
 # Ping all hosts to verify connectivity
 ping:
     ansible -i ansible/inventory.ini all -m ping
