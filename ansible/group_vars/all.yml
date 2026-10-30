@@ -11,8 +11,15 @@ _secret_vars: >-
   {{ lookup('community.sops.sops',
             playbook_dir ~ '/../../kleinbem-secrets/openwrt/shared.yaml')
      | from_yaml }}
-wifi_ssid: "{{ _secret_vars.wifi_ssid }}"
-wifi_pass: "{{ _secret_vars.wifi_pass }}"
+# The main SSID + passphrase live in their own file, shared/wifi.yaml, which
+# hass-pi can also decrypt (ESPHome devices join the same network). Same
+# lazy lookup.
+_wifi_secret_vars: >-
+  {{ lookup('community.sops.sops',
+            playbook_dir ~ '/../../kleinbem-secrets/shared/wifi.yaml')
+     | from_yaml }}
+wifi_ssid: "{{ _wifi_secret_vars.wifi_ssid }}"
+wifi_pass: "{{ _wifi_secret_vars.wifi_pass }}"
 roaming_id: "1234" # 802.11r mobility domain (trusted SSID)
 timezone: "Europe/Dublin" # zonename (needs zoneinfo-europe, baked into image)
 # POSIX TZ string for the same zone — always correct even if zoneinfo is
