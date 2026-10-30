@@ -1,1 +1,47 @@
-board_orbi_rbr50.yml
+---
+# Netgear Orbi RBS50 v1 satellite (Qualcomm IPQ4019, Wi-Fi 5, OpenWrt
+# ipq40xx/generic). Same SoC, radios and DTS radio section as the RBR50 —
+# everything above port_map is a copy of board_orbi_rbr50.yml; keep the two in
+# sync. Only the ports differ: the satellite DTS
+# (qcom-ipq4019-orbi-satellite.dtsi) labels all four as lan1-lan4, no wan, and
+# its board.d puts all four in the default lan bridge (any port works for the
+# 192.168.1.1 bench bootstrap).
+# v2 units (NAND, no USB port, `artmtd -r hw_revision` = 02) are NOT in
+# OpenWrt stable yet (upstream PR #22321) — don't flash a v1 image on one.
+
+# No routing role here; kept for the shared capture.yml / qos templates.
+wan_iface: wan
+lan_iface: br-lan
+expected_ram_mib: 512
+
+# Wi-Fi 5: ath10k rejects EHT/HE modes. 80 MHz on both 5 GHz radios.
+wifi_htmodes: { 2g: "HT20", 5g: "VHT80" }
+# Two 5 GHz radios on one board, split by band in the DTS
+# (qcom-ipq4019-rbr50/rbs50.dts, OpenWrt 25.12):
+#   IPQ4019 wifi1 (a800000.wifi, 2x2): full 5 GHz, used for the low band
+#   QCA9984 on PCIe (4x4): ieee80211-freq-limit 5470–5875 MHz = ch 100+ only
+# So the QCA9984 can't do channel 36. The backhaul takes the IPQ4019 radio on
+# the low band (non-DFS on purpose: a radar hit would otherwise drop every
+# satellite at once; 149+ is 25 mW SRD in IE, useless); the 4x4 QCA9984 serves
+# clients on the DFS block 100–112, where a radar hit only moves clients.
+# Client radios take wifi_channel_plan in uci order; the backhaul radio is
+# skipped and takes wifi_backhaul_channel instead. (Every Orbi runs a
+# backhaul; without one, the QCA9984 could land on 36 and fail.)
+wifi_channel_plan: { 5g: [100, 36] }
+
+# Backhaul radio picked by its uci `path` (glob), not by enumeration order:
+# phy numbering between the on-SoC (AHB) and PCIe radios isn't fixed. The
+# index stays as the fallback for boards without a path.
+wifi_backhaul_band: 5g
+wifi_backhaul_radio_path: "*a800000.wifi"
+wifi_backhaul_radio_index: 0
+wifi_backhaul_channel: 36
+wifi_backhaul_htmode: VHT80
+
+# Orbi satellite ports: lan1-3 are untagged access ports like on the
+# BPI-R4s; lan4 is the tagged trunk if this unit is ever wired as a gate or
+# plain AP. A mesh node (group_vars/mesh_nodes.yml) leaves the trunk port
+# out of the bridge, so lan4 is dead there — by design (no loop).
+port_map:
+  trunk: [lan4]
+  untagged: { lan1: infra, lan2: trusted, lan3: cameras }
