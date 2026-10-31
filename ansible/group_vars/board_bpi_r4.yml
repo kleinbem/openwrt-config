@@ -2,9 +2,13 @@
 # Banana Pi BPI-R4 (MediaTek MT7988A, Wi-Fi 7 via the BE14000 / MT7996 card).
 # Group membership is generated from inventory.nix (`board = "bpi-r4"`).
 
-# WAN stays on the uci-defaults interface; roles/qos + capture.yml use it.
-wan_iface: eth1
-lan_iface: eth0
+# OpenWrt 25.12 port names (openwrt commit cd8dcfef): SFP1 cage = sfp-wan,
+# SFP2 cage = sfp-lan. WAN is sfp-wan (copper SFP+ module to the ONT; NBI is
+# 2 Gbit, so WAN needs a multi-gig port). Set first by the builder's
+# uci-defaults; roles/qos + capture.yml use wan_iface. The RJ45 `wan` port
+# (1G) is unassigned, kept as a spare (e.g. a future backup WAN).
+wan_iface: sfp-wan
+lan_iface: br-lan
 
 # Full 4 GiB since 2026-10-20 (the former mem=2048M boot cap only protected
 # MT7988 HW flow offloading, which stays off). roles/common asserts the
@@ -18,11 +22,10 @@ wifi_htmodes: { 2g: "EHT20", 5g: "EHT160", 6g: "EHT320" }
 # One radio per band → every radio picks its channel itself.
 wifi_channel_plan: {}
 
-# Physical port → zone map (decided 2026-07-17; gateway and AP identical).
-# The SFP+ link between the two BPI-R4s is a tagged trunk carrying all VLANs.
-# DSA port names (lan1…, sfp2) are the expected BPI-R4 names — bench-verify
-# once with `ls /sys/class/net` on the flashed board and adjust here if the
-# hardware disagrees.
+# Physical port → zone map (gateway and AP identical; trunk on sfp-lan since
+# 2026-10-30). The SFP+ link between the two BPI-R4s (SFP2 cage, sfp-lan) is a
+# tagged trunk carrying all VLANs. Names are the ones 25.12's board.d uses for
+# bananapi,bpi-r4.
 port_map:
-  trunk: [sfp2]
+  trunk: [sfp-lan]
   untagged: { lan1: infra, lan2: trusted, lan3: cameras } # cameras = wired cams
