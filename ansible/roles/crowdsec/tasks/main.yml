@@ -1,17 +1,11 @@
 ---
 # ---------------------------------------------------------------------------
-# CrowdSec — native, self-contained behavioural IPS on the router.
+# CrowdSec on the gateway: parses the router's own logs, decides on a local
+# LAPI and enforces through the nftables bouncer. No dependency on the fleet's
+# CrowdSec. Off via crowdsec_enable (see group_vars/all.yml).
 # ---------------------------------------------------------------------------
-# The agent parses the router's OWN logs (ssh/dropbear, firewall drops, dns),
-# the local LAPI makes decisions, and the firewall-bouncer enforces them as
-# nftables drops. Fully self-contained: local LAPI, NO dependency on the fleet
-# CrowdSec (which keeps protecting the fleet's services independently).
-# Complements banIP (static reputation feeds) with behavioural detection
-# (brute-force / probing patterns).
-#
-# ⚠️ BENCH-VERIFY (needs the running service + internet to the CrowdSec hub;
-# not offline-testable): collection install and bouncer enrollment. The role
-# is idempotent — safe to re-run once those succeed.
+# Collection install and bouncer enrollment need the CrowdSec hub, so they're
+# untested offline; the role is idempotent, re-run it once they succeed.
 - name: Configure CrowdSec (gateway)
   when: "'gateways' in group_names"
   block:

@@ -1,19 +1,8 @@
 ---
 # ---------------------------------------------------------------------------
-# banIP — drop known-malicious source IPs at the WAN edge (nftables sets fed
-# from reputation blocklists). Cheap defence for an internet-facing gateway:
-# stops scanners / botnet / brute-force sources before they reach anything.
+# banIP: drop known-bad source IPs at the WAN edge, gateway only.
+# Feed choice and RAM budget: banip_feeds in group_vars/all.yml.
 # ---------------------------------------------------------------------------
-# Gateway only (it's a WAN-edge control). RAM-conscious: banIP holds its sets
-# in memory (and nftables set lookups cost CPU per packet), so we enable only
-# a few HIGH-SIGNAL, modest-size feeds — NOT the huge aggregate
-# or country lists, which would balloon RAM and CPU on a router.
-#
-#   firehol_level1 — spamhaus DROP + dshield + fullbogons: the highest-signal,
-#                    lowest-false-positive "should never talk to you" set.
-#   debl           — blocklist.de: hosts caught brute-forcing ssh/mail/etc.
-#   backscatter    — spoofed-source / backscatter sources.
-# Add more later via banip_feeds if RAM allows (check `banip -s`).
 - name: Configure banIP (gateway edge blocking)
   when: "'gateways' in group_names"
   block:

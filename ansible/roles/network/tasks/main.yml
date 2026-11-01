@@ -2,16 +2,11 @@
 # ---------------------------------------------------------------------------
 # Network/VLAN role — segments the flat 10.x per ../../../../../openwrt/docs/NETWORK_PLAN.md.
 # ---------------------------------------------------------------------------
-# Consumes the `vlans` source of truth in group_vars/all.yml plus the board's
-# `port_map` (group_vars/board_<board>.yml) and the generated per-host `mgmt_ip`.
-# Gateway: per-VLAN interfaces + DHCP pools (AdGuard via option 6) + the full
-# firewall zone matrix. AP: same bridge-VLANs, single mgmt IP on infra, L2
-# bridge for everything else — its SSIDs tag clients into the right VLAN over
-# the trunk.
-#
-# LUKS constraint (do not break): the Tang mesh and every headless-unlock
-# host live together in the infra VLAN, so clevis unlock never crosses a
-# firewall boundary. See ../../../../../openwrt/docs/NETWORK_PLAN.md before moving any fleet host.
+# Inputs: `vlans` (group_vars/all.yml), the board's `port_map` and `mgmt_ip`.
+# Gateway gets per-VLAN interfaces, DHCP and the firewall matrix; an AP gets the
+# same bridge VLANs, one mgmt IP on infra and plain L2 for the rest.
+# Don't move a fleet host out of infra: Tang and the unlock hosts must share a
+# zone so clevis unlock never crosses the firewall.
 - name: Render network uci script
   ansible.builtin.template:
     src: network-config.sh.j2
@@ -54,10 +49,8 @@
   raw: /etc/init.d/sysntpd restart
 
 # ---------------------------------------------------------------------------
-# TERMINAL TASK — applies the new addressing; DROPS SSH on both hosts as the
-# management IP moves onto the infra VLAN (gateway → 10.0.0.1, APs → their
-# mgmt_ip). Reconnect on an infra access port (see port_map); after bench, point the
-# inventory at the new addresses. ignore_errors: the drop is expected.
+# Terminal task: SSH drops as the management IP moves onto infra (mgmt_ip).
+# Reconnect on an infra access port. ignore_errors: the drop is expected.
 # ---------------------------------------------------------------------------
 - name: Restart network (TERMINAL — drops SSH, reconnect on infra VLAN)
   raw: /etc/init.d/network restart

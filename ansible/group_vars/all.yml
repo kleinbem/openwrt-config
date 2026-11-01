@@ -1,11 +1,8 @@
 ---
 # ---------------------------------------------------------------------------
-# Secret-relevant values (SSID, passphrase, static-lease MACs) live in
-# kleinbem-secrets/openwrt/shared.yaml (sops/age, cutover 2026-08-08 —
-# replaces openwrt-secrets/ansible-vars.yaml) — this repo is public, that
-# one is not. The lookup is lazy: only tasks that reference these vars
-# trigger a decrypt (YubiKey must be present, same as the firmware build).
-# Edit with: just secrets::edit openwrt/shared.yaml
+# Secrets stay out of this public repo, in kleinbem-secrets/openwrt/shared.yaml.
+# The lookup is lazy: only tasks that use these vars decrypt (needs the YubiKey).
+# Edit with `just secrets::edit openwrt/shared.yaml` from openwrt/.
 # ---------------------------------------------------------------------------
 _secret_vars: >-
   {{ lookup('community.sops.sops',
@@ -20,16 +17,15 @@ _wifi_secret_vars: >-
      | from_yaml }}
 wifi_ssid: "{{ _wifi_secret_vars.wifi_ssid }}"
 wifi_pass: "{{ _wifi_secret_vars.wifi_pass }}"
-roaming_id: "1234" # 802.11r mobility domain (trusted SSID)
+roaming_id: "1234" # 802.11r mobility domain; not read by any role
 timezone: "Europe/Dublin" # zonename (needs zoneinfo-europe, baked into image)
 # POSIX TZ string for the same zone — always correct even if zoneinfo is
 # ever missing; busybox ntpd/date read this. Europe/Dublin = GMT/IST.
 timezone_posix: "GMT0IST,M3.5.0/1,M10.5.0"
 
 # ---------------------------------------------------------------------------
-# QoS / SQM (roles/qos) — cake bufferbloat control on the WAN. Set both to
-# your MEASURED line speed (~90–95% of a speedtest) to enable; 0 = disabled
-# (safe no-op, so it ships now and you fill these at the bench).
+# QoS / SQM (roles/qos): cake on the WAN. Set both to ~90-95% of the measured
+# line speed to enable; 0 disables it.
 # ---------------------------------------------------------------------------
 wan_down_mbit: 0 # WAN download Mbit/s (e.g. 500) — 0 disables SQM
 wan_up_mbit: 0 # WAN upload   Mbit/s (e.g. 50)  — 0 disables SQM
@@ -39,9 +35,8 @@ qos_linklayer: "ethernet"
 qos_overhead: 44
 
 # ---------------------------------------------------------------------------
-# banIP feeds (roles/banip) — high-signal, modest-size only (banIP holds sets
-# in RAM; set size costs CPU per packet). Add feeds cautiously and watch memory with
-# `banip -s`. NOT the huge aggregate/country lists.
+# banIP feeds (roles/banip): small, high-signal lists only. Sets live in RAM
+# and cost CPU per packet, so no big aggregate/country lists; watch `banip -s`.
 # ---------------------------------------------------------------------------
 banip_feeds:
   - firehol_level1 # spamhaus DROP + dshield + bogons (highest signal)
@@ -55,23 +50,18 @@ banip_feeds:
 crowdsec_enable: false
 
 # ---------------------------------------------------------------------------
-# Remote syslog (roles/common) — ship router logs to a fleet collector. Empty
-# = local-only (safe no-op). Point at a syslog endpoint on the fleet (e.g. a
-# promtail/syslog receiver alongside Loki on nasbook) to enable.
+# Remote syslog (roles/common): empty IP keeps logs local.
 # ---------------------------------------------------------------------------
 remote_syslog_ip: "" # e.g. "10.0.0.30" — empty disables
 remote_syslog_port: 514
 remote_syslog_proto: "udp"
 
 # ---------------------------------------------------------------------------
-# UI (roles/ui) — the router hub landing page's "Fleet dashboards" tiles.
-# The central home dashboard aggregates everything; these are quick jumps.
-# Edit freely; these are just clickable links.
+# UI (roles/ui): "Fleet dashboards" link tiles on the router landing page.
 # ---------------------------------------------------------------------------
 ui_home_dashboard: "home.kleinbem.dev"
 ui_fleet_links:
-  # AdGuard is now LOCAL on the gateway (adguard_local) → it's a "This router"
-  # tile, not a fleet link. The home dashboard aggregates monitoring/Grafana.
+  # AdGuard runs on the gateway (adguard_local), so it's a "This router" tile.
   - { name: "Home Dashboard", url: "https://home.kleinbem.dev", icon: "🏠", desc: "Everything, aggregated" }
   - { name: "Notifications", url: "https://ntfy.kleinbem.dev", icon: "📣", desc: "ntfy alerts / deploy signal" }
   - { name: "n8n", url: "https://n8n.kleinbem.dev", icon: "📡", desc: "Automation workflows" }
@@ -79,45 +69,28 @@ ui_fleet_links:
   - { name: "Cache", url: "https://cache.kleinbem.dev", icon: "📦", desc: "Nix binary cache" }
 
 # ---------------------------------------------------------------------------
-# Wi-Fi radios + SSIDs (roles/wifi) — spec locked 2026-07.
+# Wi-Fi radios + SSIDs (roles/wifi)
 # ---------------------------------------------------------------------------
-# The main SSID keeps its existing name AND password (clients survive the
-# router swap unchanged); the per-VLAN SSIDs derive their names from it and
-# take NEW passphrases from kleinbem-secrets/openwrt/shared.yaml
-# (wifi_pass_iot / wifi_pass_guest / wifi_pass_cameras — add via
-# `just secrets::edit openwrt/shared.yaml`).
-# `encryption: sae-mixed` = WPA2/WPA3 transition mode; the role forces pure
-# SAE + MFP on 6 GHz (mandated there). Drop a network to psk2 only if a
-# specific device refuses the transition mode.
-# `ft` = 802.11r fast roaming between the two BPI-R4s — off for iot/cameras
-# (cheap clients often mis-handle FT and those devices don't roam anyway).
+# The main SSID keeps the old router's name and password so clients move over
+# unchanged; the other SSIDs derive their names from it.
+# `sae-mixed` = WPA2/WPA3 transition; the role forces pure SAE + MFP on 6 GHz.
+# `ft` = 802.11r fast roaming, only on guest for now.
 wifi_country: "IE"
-# Per-band channel widths (`wifi_htmodes`) and the optional fixed-channel
-# plan (`wifi_channel_plan`) are BOARD-specific: see group_vars/board_<board>.yml
-# (the inventory generator puts every router in a `board_<board>` group from
-# inventory.nix's `board`). Wi-Fi 7 EHT modes on the BPI-R4, HT20/VHT80 on
-# the Wi-Fi 5 Orbi units.
+# Channel widths and channel plan are per board: group_vars/board_<board>.yml.
 #
-# Minimum per-radio transmit power the wifi role asserts after applying (dBm).
-# Catches the mt76/BE14000 EEPROM trap where every radio comes up at 6 dBm
-# (same-room speed fine, nothing one wall away): the usual root cause behind
-# "the BPI-R4's coverage is bad". `wifi_txpower_check: false` bypasses it for
-# a bench experiment.
+# Minimum per-radio TX power (dBm) the wifi role asserts. Catches the mt76
+# BE14000 EEPROM trap where every radio comes up at 6 dBm (fine in the same
+# room, nothing one wall away). `wifi_txpower_check: false` skips it.
 wifi_min_txpower_dbm: 15
 wifi_txpower_check: true
 
 # ---------------------------------------------------------------------------
-# Wireless backhaul (roles/wifi + roles/network) — Orbi-style topology under
-# OpenWrt: ONE unit is wired to a BPI-R4 (the mesh *gate*), the others hang
-# off it over an encrypted 802.11s mesh (mesh *nodes*) and need no Ethernet.
-# The mesh interface joins br-lan as a TAGGED trunk, so every VLAN + the MPSK
-# layout works unchanged over the air. Role per host comes from inventory.nix
-# tags (`mesh-gate` → group mesh_gates, `mesh-node` → mesh_nodes; see
-# group_vars/mesh_*.yml); which radio carries it is a board property
-# (group_vars/board_<board>.yml: wifi_backhaul_band/_radio_index/_channel).
-# Nodes get NO wired trunk port (a wired + wireless uplink would loop the
-# bridge); STP is enabled on br-lan wherever a backhaul exists as insurance.
-# `none` = plain wired AP / router (the BPI-R4s).
+# Wireless backhaul (roles/wifi + roles/network): one Orbi is wired to a BPI-R4
+# (mesh gate), the others join it over encrypted 802.11s (mesh nodes). The mesh
+# interface is a tagged trunk on br-lan, so all VLANs work over the air.
+# Role comes from inventory.nix tags (group_vars/mesh_*.yml), the radio from
+# group_vars/board_<board>.yml. STP is on wherever a backhaul exists.
+# `none` = plain wired AP or router.
 # ---------------------------------------------------------------------------
 wifi_backhaul: none
 wifi_backhaul_ifname: mesh0 # pinned so bridge-vlan can list it as a tagged port
@@ -127,19 +100,11 @@ wifi_backhaul_mesh_id: kleinbem-backhaul # visible in beacons anyway, not secret
 # roles/wifi refuses to bring up a backhaul with an empty key.
 wifi_backhaul_key: "{{ _secret_vars.wifi_backhaul_key | default('') }}"
 wifi_networks:
-  # ── MIGRATION-SAFE layout (2026-07-18) ────────────────────────────────────
-  # Rather than turn the existing 16CVG into MPSK (which would risk every
-  # already-connected device at once, esp. given the 25.12 MPSK regression),
-  # keep 16CVG stable and run MPSK on a SEPARATE new SSID you move devices onto
-  # at your own pace. Retire 16CVG once everything's migrated + MPSK is proven.
+  # The main SSID stays as it was and MPSK runs on separate SSIDs, so devices
+  # move over one at a time. Retire the main SSID once MPSK is proven.
 
-  # 1. LEGACY/stable — must look EXACTLY like the old router so already-paired
-  #    devices reconnect with no prompt at the swap. Old router = WPA2-Personal
-  #    (confirmed 2026-07-18), so: psk2 (pure WPA2), 2.4+5 GHz only (WPA2 can't
-  #    do 6 GHz), no 802.11r (old router had none). Same SSID + password. During
-  #    transition trusted is reachable via WPA2 here (= your setup today) OR via
-  #    WPA3 on 16CVG-W3; retire this once devices are migrated, and trusted
-  #    becomes WPA3-only.
+  # 1. Legacy: an exact copy of the old router (WPA2 psk2, 2.4+5 GHz, no
+  #    802.11r) so paired devices reconnect without a prompt.
   - name: trusted
     ssid: "{{ wifi_ssid }}"
     key: "{{ wifi_pass }}"
@@ -148,22 +113,11 @@ wifi_networks:
     encryption: psk2
     ft: false
 
-  # 2+3. MPSK — the networks everything-but-guests moves onto, one device at a
-  #    time. The PASSWORD picks the VLAN (not the SSID), so we run TWO MPSK
-  #    SSIDs that differ only in encryption tier; a device joins whichever its
-  #    radio likes and still lands in the right VLAN. Encryption strength is
-  #    matched to VLAN sensitivity:
-  #      • -W3 (WPA3/sae-mixed): carries the sensitive VLANs (trusted, work)
-  #        + iot/cameras for modern gear. Strong, not offline-crackable.
-  #      • -W2 (WPA2/psk2): compatibility SSID for cheap gear that chokes on
-  #        WPA3 beacons — carries ONLY low-trust VLANs (iot, cameras). If its
-  #        WPA2 password is ever cracked, it exposes only isolated VLANs.
-  #    trusted keeps its existing password (migrate = forget 16CVG / join -W3).
-  #    ⚠️ BENCH-VALIDATE (not verifiable offline): (a) 25.12 ucode wpa_psk_file
-  #    dynamic-VLAN regression #20355; (b) whether WPA3-SAE clients on -W3 get
-  #    a VLAN — wpa_psk_file is the WPA2 side, so SAE clients may need
-  #    sae_password+vlanid (else those devices use 16CVG/-W2). 16CVG is the
-  #    reliable WPA3 path for trusted regardless. See ../../../openwrt/docs/NETWORK_PLAN.md.
+  # 2. MPSK: the password picks the VLAN. -W3 (sae-mixed) carries all but
+  #    guest; -W2 (WPA2) is for gear that chokes on WPA3 and carries only
+  #    iot/cameras, so a cracked WPA2 password exposes only isolated VLANs.
+  #    Bench-check: 25.12 wpa_psk_file dynamic-VLAN regression (#20355), and
+  #    whether SAE clients on -W3 get a VLAN at all (wpa_psk_file is WPA2-only).
   - name: mpsk_w3
     ssid: "{{ wifi_ssid }}-W3"
     mpsk: true
@@ -207,19 +161,16 @@ wifi_networks:
 adguard_ip: "10.0.0.21" # external AdGuard (hass-pi) — used only when adguard_local is false
 
 # ---------------------------------------------------------------------------
-# adguard_local: run AdGuard Home NATIVELY on the gateway (roles/adguard) and
-# point every VLAN's DNS at its own gateway. true = move filtering to the edge
-# (the network role reworks option-6 + hijack accordingly); the external
-# hass-pi AdGuard is then retired at cutover (a fleet change, done separately).
+# adguard_local: run AdGuard Home on the gateway (roles/adguard) and point each
+# VLAN's DNS (option 6) at its own gateway instead of adguard_ip; the hijack
+# still only applies to `filtered` VLANs.
 # ---------------------------------------------------------------------------
 adguard_local: true
 
 # ---------------------------------------------------------------------------
-# WireGuard (roles/wireguard) — OPTIONAL edge VPN / break-glass (NetBird
-# already covers normal remote access). Safe no-op until keys are set.
-# Generate: `wg genkey | tee server.key | wg pubkey > server.pub`; put the
-# private key in sops (openwrt/gateway.yaml: wg_server_private_key) and add
-# peers with their pubkeys.
+# WireGuard (roles/wireguard): optional break-glass VPN, NetBird covers normal
+# remote access. Off until wg_server_private_key is set in
+# kleinbem-secrets/openwrt/gateway.yaml (`wg genkey`) and peers are added.
 # ---------------------------------------------------------------------------
 wg_server_private_key: "" # gateway-only: set in group_vars/gateways.yml
 wg_listen_port: 51820
@@ -228,32 +179,22 @@ wg_reach: [infra, trusted] # zones VPN clients may reach
 wg_peers: [] # e.g. [{ name: phone, public_key: "...", ip: "10.9.0.2" }]
 
 # ---------------------------------------------------------------------------
-# NetBird (roles/netbird) — join the router to the FLEET mesh (same as
-# nvme/orin/core-pi/nasbook). Safe no-op until keyed. Add a dedicated device
-# setup key to sops as netbird_setup_key (a non-expiring device key fits the
-# zero-trust NetBird policy). netbird_management_url only for self-hosted.
-# Once enrolled: retire the nixos-nvme hosts-file workaround (a fleet change).
+# NetBird (roles/netbird): joins the router to the fleet mesh. Off until
+# netbird_setup_key is in shared.yaml.
 # ---------------------------------------------------------------------------
 netbird_setup_key: "{{ _secret_vars.netbird_setup_key | default('') }}"
 netbird_management_url: "" # empty = NetBird default/cloud
 
 # ---------------------------------------------------------------------------
-# VLAN-segmented 10.x — SOURCE OF TRUTH for the network role (to be built).
-# Design + firewall matrix: ../../../openwrt/docs/NETWORK_PLAN.md.
-# The fleet — the Tang MESH (every capable host: .5/.12/.21/.22/nasbook…),
-# AdGuard 10.0.0.21, and the headless-unlock hosts — all live in the `infra`
-# VLAN. Clevis unlock is SSS t=1 (any one Tang server unlocks), so it stays
-# within-zone. Keep each unlock host in the same zone as ≥1 of its Tang servers.
-# `wan: true` = internet allowed. `reach_out` = other ZONES this VLAN may
-# initiate to (actual firewall forwardings). `dns` drives the DNS + input
-# policy (one attribute, three tiers — the network role derives everything):
-#   trusted  → zone input ACCEPT; DHCP hands out AdGuard primary + this VLAN's
-#              own gateway as unfiltered fallback; no hijack. (your devices)
-#   filtered → input REJECT; AdGuard ONLY + DNS hijack (:53 DNAT→AdGuard) so
-#              hardcoded resolvers can't bypass filtering. (untrusted IoT/etc.)
-#   local    → input REJECT; the router's own unfiltered dnsmasq only, NObody
-#              hijacked — lets a corporate VPN use its own DNS. (work laptop)
-# Enforced by roles/network. Design + matrix: ../../../openwrt/docs/NETWORK_PLAN.md.
+# VLANs, the source of truth for roles/network. Design and firewall matrix:
+# openwrt/docs/NETWORK_PLAN.md. The fleet (all Tang servers) lives in infra;
+# keep every LUKS-unlock host in a zone with at least one of its Tang servers.
+# `reach_out` = zones this VLAN may initiate to. `dns` sets DNS + input policy:
+#   trusted  → input ACCEPT; AdGuard first, own gateway as unfiltered fallback.
+#   filtered → input REJECT; AdGuard only, :53 hijacked so hardcoded resolvers
+#              can't bypass it.
+#   local    → input REJECT; the router's unfiltered dnsmasq, no hijack, so a
+#              corporate VPN can use its own DNS.
 # ---------------------------------------------------------------------------
 vlans:
   - id: 1
@@ -296,9 +237,8 @@ vlans:
     wan: true
     dns: filtered
     reach_out: [] # internet only
-  # WFH corporate laptop — isolated from the home LAN both ways, but DNS is
-  # NOT hijacked/filtered so her employer's VPN + internal name resolution
-  # work. Wi-Fi only (SSID 16CVG-Work); no untagged port in port_maps.
+  # WFH corporate laptop: isolated from the home LAN both ways, DNS unfiltered
+  # so the employer's VPN resolves. Wi-Fi only (work password on -W3).
   - id: 50
     name: work
     subnet: "10.0.50.0/24"
@@ -309,28 +249,15 @@ vlans:
     reach_out: [] # internet only; no reach into infra/iot/cameras/trusted
 
 # ---------------------------------------------------------------------------
-# Physical port → zone map (roles/network) — BOARD-specific, so it lives in
-# group_vars/board_<board>.yml as `port_map` (BPI-R4 pair: lan1 = infra,
-# lan2 = trusted, lan3 = cameras, sfp-lan = tagged trunk). WAN stays on the
-# uci-defaults iface (`wan_iface` = sfp-wan, same file; NOT managed here). An AP's management address on the infra VLAN is the
-# generated per-host `mgmt_ip` (= its inventory.nix ip), never a shared var:
-# two APs must not collide. Bench bootstrap overrides `ansible_host` only,
-# so `mgmt_ip` stays correct while the board is still reached at 192.168.1.1.
+# Port → zone map is per board (`port_map` in group_vars/board_<board>.yml).
+# An AP's infra address is its generated per-host `mgmt_ip`, never a shared var.
+# Bench bootstrap overrides only `ansible_host` (192.168.1.1), so mgmt_ip holds.
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Static DHCP reservations
 # ---------------------------------------------------------------------------
-# Pins critical hosts to fixed IPs so leases don't drift. This was the root
-# cause of the Orin's headless-unlock outage (2026-05-30): the workstation's
-# randomized Wi-Fi MAC kept getting a new DHCP lease, so the Tang server it
-# hosts wandered off 10.0.0.5 and the Orin's clevis (bound to
-# http://10.0.0.5:7654) could no longer auto-unlock LUKS.
-#
-# The lease list itself (names, IPs, MACs) lives in kleinbem-secrets/
-# openwrt/gateway.yaml (gateway-only, loaded in group_vars/gateways.yml) —
-# MACs are device fingerprints and stay out of this public repo and off the
-# plain APs. Subnet check still applies: if the OpenWrt LAN is NOT
-# 10.0.0.0/16, both the lease IPs AND the Orin's clevis binding must move
-# to the new subnet together.
+# Pins fleet hosts to fixed IPs: clevis bindings point at Tang URLs by IP, so a
+# drifting lease breaks headless LUKS unlock. The list (with MACs) lives in
+# kleinbem-secrets/openwrt/gateway.yaml, loaded only on gateways.
 static_leases: [] # gateway-only: set in group_vars/gateways.yml

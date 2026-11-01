@@ -1,16 +1,10 @@
 ---
 # ---------------------------------------------------------------------------
-# QoS / SQM (cake) — kills bufferbloat on the WAN so latency stays flat under
-# load. Biggest quality-of-life win for the WFH video calls: cake's
-# `layer_cake` script honours the DSCP marks call apps (Teams/Zoom/Meet) set
-# on their own traffic, so real-time flows keep priority when the link is
-# saturated by a big upload/download.
+# SQM/cake on the gateway WAN against bufferbloat. layer_cake honours the DSCP
+# marks call apps set, so video calls keep priority on a saturated link.
 # ---------------------------------------------------------------------------
-# Gateway only (the WAN lives there). Package luci-app-sqm + sqm-scripts are
-# in the firmware image. Bandwidth MUST be set to your real line speed to work
-# — leave wan_down_mbit / wan_up_mbit at 0 and this role is a safe no-op, so
-# it ships now and you fill the numbers at the bench (set to ~90–95% of a
-# measured speedtest; too-high defeats the point, too-low wastes throughput).
+# No-op until wan_down_mbit/wan_up_mbit are set: too high defeats the shaping,
+# too low wastes throughput.
 - name: Configure SQM/cake on the WAN
   when: "'gateways' in group_names and (wan_down_mbit | int) > 0 and (wan_up_mbit | int) > 0"
   block:

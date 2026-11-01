@@ -2,13 +2,9 @@
 
 set dotenv-load
 
-# Every recipe below invokes ansible-playbook/ansible from the repo root,
-# but ansible.cfg lives in ansible/ — ansible's own config discovery only
-# checks $ANSIBLE_CONFIG, then ./ansible.cfg relative to the CURRENT
-# directory, so without this export ansible.cfg was never actually being
-# loaded (confirmed via `ansible-config dump`: CONFIG_FILE() = None
-# without it). That silently no-op'd every setting in it, including the
-# host_key_checking this file now relies on actually taking effect.
+# Recipes run from the repo root, and ansible only looks for ./ansible.cfg in
+# the CWD, so without this ansible/ansible.cfg (host key pinning included)
+# is silently ignored.
 export ANSIBLE_CONFIG := "ansible/ansible.cfg"
 
 default:

@@ -1,10 +1,7 @@
 #!/bin/sh
-# Rendered by roles/network — do not edit on the router.
-# Builds the VLAN-segmented 10.x from group_vars `vlans` (all.yml) + the
-# board's `port_map` (group_vars/board_<board>.yml)
-# (design + firewall matrix: docs/NETWORK_PLAN.md).
-# Commits only — the network restart that applies the new addressing (and
-# drops SSH) is a separate, terminal Ansible task.
+# Rendered by roles/network, do not edit on the router. Design and firewall
+# matrix: openwrt/docs/NETWORK_PLAN.md. Commits only: the network restart
+# (which drops SSH) is a separate, terminal task.
 set -e
 {% set is_gw = 'gateways' in group_names %}
 {# port_map comes from this board's group_vars/board_<board>.yml #}
@@ -91,13 +88,9 @@ uci commit network
 
 # --- DHCP: pool per VLAN; resolver via option 6 ----------------------------
 {% if adguard_local | default(false) %}
-# adguard_local: AdGuard Home runs on THIS gateway (:53), so every VLAN
-# resolves against its own gateway IP — filtering is local + always-up, and
-# the cross-VLAN "reach AdGuard in infra" rules disappear. Per-VLAN filtering
-# policy is set per-client inside AdGuard (roles/adguard). Restricted zones
-# still get a :53 input allow + hijack below so hardcoded resolvers can't skip
-# AdGuard. (`local`-tier/work also lands on AdGuard now; corporate VPN tunnels
-# its own DNS so it's unaffected — allowlist a domain in AdGuard if needed.)
+# adguard_local: every VLAN resolves against its own gateway IP (AdGuard :53).
+# Per-VLAN policy lives in AdGuard's per-client settings. The work VLAN lands
+# on AdGuard too; its VPN tunnels its own DNS, allowlist a domain if needed.
 {% else %}
 # External AdGuard (adguard_ip) with the per-`dns`-tier policy:
 #  • trusted → AdGuard + own-gateway unfiltered fallback (survives hass-pi down)
@@ -122,11 +115,8 @@ uci add_list dhcp.{{ vlan.name }}.dhcp_option='6,{{ adguard_ip }}'
 {% endif %}
 {% endfor %}
 
-# dnsmasq resolver hardening (the gateway's own DNS — serves the work/`local`
-# tier + the trusted/infra fallback). rebind_protection blocks DNS-rebinding
-# attacks (external names resolving to private IPs); the split-horizon domain
-# is whitelisted so internal `{{ dns_domain | default("kleinbem.dev") }}` still
-# resolves to LAN IPs. Bigger cache + don't-forward-junk for cleaner upstream.
+# dnsmasq hardening. rebind_protection blocks public names resolving to
+# private IPs; the split-horizon domain is exempt so it still resolves to LAN IPs.
 uci set dhcp.@dnsmasq[0].cachesize='2000'
 uci set dhcp.@dnsmasq[0].domainneeded='1'
 uci set dhcp.@dnsmasq[0].boguspriv='1'
@@ -151,16 +141,10 @@ uci commit system
 while uci -q delete firewall.@zone[0]; do :; done
 while uci -q delete firewall.@forwarding[0]; do :; done
 
-# Defaults hardening: drop invalid/out-of-state packets and enable SYN-flood
-# protection at the edge. NOTE ON FLOW OFFLOADING: deliberately left OFF.
-# Software/HW flow-offloading bypasses the qdisc, which would defeat SQM/cake
-# (roles/qos) — and cake's latency control matters more than raw throughput
-# for the WFH calls at home WAN speeds (the CPU handles NAT fine there). HW
-# offload on MT7988 was also the only reason for the former mem=2048M boot
-# cap (PPE DMA + 4 GiB drops packets, upstream-unresolved as of 2026-10); the
-# boards now boot with the full 4 GiB, so enabling HW offload later means
-# re-testing that combination first. If a future WAN is fast enough to need
-# offload, turn SQM off and flip these.
+# Flow offloading stays off: it bypasses the qdisc and so defeats SQM/cake,
+# and the CPU handles NAT at this WAN speed. MT7988 HW offload with 4 GiB RAM
+# has also dropped packets (PPE DMA), so re-test that before ever enabling it.
+# no-link: not found reported upstream.
 uci set firewall.@defaults[0].drop_invalid='1'
 uci set firewall.@defaults[0].synflood_protect='1'
 uci set firewall.@defaults[0].flow_offloading='0'
@@ -201,11 +185,8 @@ uci set firewall.fwd_{{ vlan.name }}_wan.dest='wan'
 {% endif %}
 {% endfor %}
 
-# Input-REJECT zones (everything except the `trusted` DNS tier) still need,
-# from the router itself: DHCP, NTP (their only clock — see server above),
-# and ping. :53 to the router is allowed for `local`-DNS zones (work, gateway
-# dnsmasq) AND for every zone when adguard_local (they resolve against the
-# gateway's own AdGuard on :53).
+# Input-REJECT zones still need DHCP, NTP and ping from the router, plus :53
+# for `local` zones and for every zone when adguard_local.
 {% for vlan in vlans if vlan.dns != 'trusted' %}
 uci set firewall.rule_dhcp_{{ vlan.name }}=rule
 uci set firewall.rule_dhcp_{{ vlan.name }}.name='Allow-DHCP-{{ vlan.name }}'

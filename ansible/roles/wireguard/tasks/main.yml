@@ -1,13 +1,10 @@
 ---
 # ---------------------------------------------------------------------------
-# WireGuard — native road-warrior VPN endpoint on the gateway (edge-terminated
-# remote access). Additive: a new wg0 interface + its own firewall zone; does
-# not touch existing routing/NAT, so it can't disturb the running network.
+# WireGuard road-warrior endpoint on the gateway. Additive (own wg0 + zone, no
+# NAT changes); each peer gets a /32 route, so peer IPs must not overlap LAN
+# hosts. A no-op until wg_server_private_key and
+# wg_peers are set (see group_vars/all.yml).
 # ---------------------------------------------------------------------------
-# Gateway only. Secret-driven, safe no-op until configured: set
-# wg_server_private_key (sops, kleinbem-secrets/openwrt/gateway.yaml) + list
-# peers in wg_peers. Generate a keypair with `wg genkey | tee priv | wg pubkey`.
-# Clients get an address in wg_subnet and reach the zones in wg_reach.
 - name: Configure WireGuard road-warrior server
   when: >-
     'gateways' in group_names
