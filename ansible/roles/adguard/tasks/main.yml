@@ -1,20 +1,12 @@
 ---
 # ---------------------------------------------------------------------------
-# AdGuard Home — native DNS filtering on the gateway (moved off hass-pi).
+# AdGuard Home on the gateway, gated on `adguard_local`. Filtering at the edge
+# needs no cross-VLAN rules and doesn't depend on a fleet host being up.
 # ---------------------------------------------------------------------------
-# DNS filtering belongs at the edge: with AdGuard local, clients resolve
-# against the gateway (fast, always-up), the cross-VLAN "reach AdGuard in
-# infra" rules disappear, and the fleet no longer owns LAN DNS. Gateway only.
-# Gated on `adguard_local` — the network role reworks DHCP option-6 + the DNS
-# hijack to point at the LOCAL gateway when this is true (see roles/network).
-#
-# DNS port split: AdGuard binds :53 (the resolver clients use); dnsmasq drops
-# to :5353 and keeps DHCP + local-lease names. Point AdGuard's upstream for the
-# local domain at 127.0.0.1:5353 (done in the AdGuard UI — see below).
-#
-# ⚠️ AdGuard's own config (upstreams, blocklists, admin login, per-client
-# rules) is UI-managed at http://<gateway>:3000 on first boot — same as it was
-# on hass-pi. This role does the OpenWrt-side plumbing only.
+# AdGuard takes :53; dnsmasq moves to :5353 and keeps DHCP + lease names, so set
+# AdGuard's upstream for the local domain to 127.0.0.1:5353.
+# AdGuard's own config (upstreams, blocklists, login) is done in its UI at
+# http://<gateway>:3000; this role only does the OpenWrt plumbing.
 - name: AdGuard Home native DNS (gateway)
   when: "'gateways' in group_names and (adguard_local | default(false))"
   block:

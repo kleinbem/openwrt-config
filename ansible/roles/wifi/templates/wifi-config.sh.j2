@@ -1,33 +1,22 @@
 #!/bin/sh
 # Rendered by the wifi role ({{ template_path | default('roles/wifi') }}) — do not edit on the router.
-# Band-aware: discovers whichever radios this board actually has (the BE14000
-# NIC exposes 2g/5g/6g; an Orbi has 2g + two 5g; a board without the module
-# simply has none) and creates each SSID only on its allowed bands. Safe to
-# re-run: the role owns /etc/config/wireless outright and rebuilds every
-# wifi-iface section. Channel widths + the fixed-channel plan come from the
-# board's group_vars/board_<board>.yml.
+# Discovers whichever radios the board has and puts each SSID only on its
+# allowed bands. Safe to re-run: it rebuilds every wifi-iface section.
 set -e
 
-# Fixed-channel plan (`wifi_channel_plan`, band → list of channels): radios
-# of a band take the listed channels in uci order; a band without a plan, or
-# more radios than channels, falls back to 'auto'. Needed where one board has
-# two radios on the same band (Orbi: IPQ4019 + QCA9984, both 5 GHz) so they
-# don't both auto-pick the same channel. Sets CH; must NOT run in a subshell
-# (the per-band counters n_<band> live in this shell).
 {% set bh = (wifi_backhaul | default('none')) in ['gate', 'node'] %}
 {% if bh %}
 {% if not (wifi_backhaul_key | default('')) %}
 echo "wifi-config: wifi_backhaul={{ wifi_backhaul }} but wifi_backhaul_key is empty — add it to kleinbem-secrets/openwrt/shared.yaml" >&2
 exit 1
 {% endif %}
-# Wireless backhaul ({{ wifi_backhaul }}): one radio is reserved for an
-# encrypted 802.11s mesh point (board: {{ wifi_backhaul_band }} radio #{{ wifi_backhaul_radio_index }},
-# channel {{ wifi_backhaul_channel }}) and carries NO client SSIDs. Its netdev name is pinned
-# ({{ wifi_backhaul_ifname }}) so roles/network can list it as a tagged trunk
-# port of br-lan — every VLAN rides the mesh. The `backhaul` interface it
-# attaches to is created by roles/network (br-lan, proto none).
+# Backhaul ({{ wifi_backhaul }}): {{ wifi_backhaul_band }} radio #{{ wifi_backhaul_radio_index }} is an 802.11s
+# mesh point with no client SSIDs. Its netdev is pinned ({{ wifi_backhaul_ifname }}) so
+# roles/network can make it a tagged br-lan trunk port.
 BACKHAUL_RADIO=""
 {% endif %}
+# Radios of a band take `wifi_channel_plan` channels in uci order, else 'auto'.
+# Sets CH; must not run in a subshell (the n_<band> counters live here).
 pick_channel() {
   CH=auto
   case "$1" in

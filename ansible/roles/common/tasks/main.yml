@@ -12,17 +12,9 @@
     uci set system.@system[0].timezone='{{ timezone_posix }}'
     uci commit system
 
-# Remote syslog: ship the router's logs to a central collector on the fleet so
-# they survive reboots and sit alongside everything else. Var-driven — set
-# remote_syslog_ip in group_vars to enable (default empty = local logging
-# only, a safe no-op until you have an endpoint). Also bump the local ring
-# buffer so recent logs survive between polls.
-# Sanity: the kernel sees the RAM the board has (board group_vars
-# `expected_ram_mib`, 15 % tolerance for reserved/firmware memory) and no
-# `mem=` limit is on the cmdline. Catches a stale `mem=2048M` surviving in a
-# saved U-Boot environment after the 2026-10-20 removal from uEnv.txt, or a
-# board with a bad DIMM. Also prints MemTotal so the first 4 GiB boot leaves
-# a record in the run log.
+# The kernel must see the board's RAM (`expected_ram_mib`, 15 % slack for
+# firmware reservations) with no `mem=` on the cmdline. Catches a stale `mem=`
+# kept in a saved U-Boot environment, or bad RAM.
 - name: Verify the board sees its full RAM (no stale mem= limit)
   when: expected_ram_mib is defined
   raw: |
@@ -35,6 +27,8 @@
     [ "$kb" -ge "$min" ] || { echo "MemTotal below the expected minimum ${min} kB — stale mem= in U-Boot env or bad RAM?"; exit 3; }
   changed_when: false
 
+# Remote syslog when remote_syslog_ip is set, else local only. The bigger ring
+# buffer keeps recent logs between polls.
 - name: Configure remote syslog + local log buffer
   raw: |
     uci set system.@system[0].log_size='128'

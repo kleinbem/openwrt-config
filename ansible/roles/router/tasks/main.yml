@@ -1,16 +1,8 @@
 ---
 # ---------------------------------------------------------------------------
-# Fleet gateway: DHCP + DNS handoff  (gateway hosts only, connection-safe)
+# Fleet gateway: static DHCP leases (gateway only). Changes only what clients
+# get, not the router's own IP, so the SSH session survives.
 # ---------------------------------------------------------------------------
-# Hands every DHCP client AdGuard (hass-pi, {{ adguard_ip }}) as its DNS
-# resolver via option 6 and pins the fleet's critical static leases. These
-# change what the router serves to CLIENTS, not the router's own IP, so the
-# SSH session survives. dnsmasq keeps serving DHCP and the router keeps its
-# own WAN upstream (no DNS SPOF if hass-pi is down).
-#
-# The LAN-subnet move (which DOES drop SSH) is deliberately the LAST task in
-# this role — see "Set LAN address" at the bottom — so the exporter + LXC
-# tasks below still run over a live connection on the gateway.
 - name: Configure fleet gateway DHCP + DNS handoff
   when: "'gateways' in group_names"
   block:

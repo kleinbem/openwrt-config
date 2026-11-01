@@ -1,25 +1,14 @@
 ---
 # ---------------------------------------------------------------------------
-# Wi-Fi radio role — every OpenWrt AP in the fleet: the tri-band BE14000
-# (MT7996) on the BPI-R4s and the Wi-Fi 5 radios of the Orbi units.
+# Wi-Fi on every router: the BE14000 (MT7996) on the BPI-R4s, the Wi-Fi 5
+# radios on the Orbis. SSIDs in group_vars/all.yml, radio settings per board.
 # ---------------------------------------------------------------------------
-# Spec (locked 2026-07): SSID family derived from the existing secret SSID
-# (main network keeps its current name + password so clients survive the
-# router swap), country IE, WPA3/SAE (pure SAE forced on 6 GHz), 802.11r
-# fast roaming between all APs, DAWN for client steering.
-# SSID→VLAN map + bands live in group_vars/all.yml (`wifi_networks`); channel
-# widths + the fixed-channel plan per board in group_vars/board_<board>.yml.
-# Wireless backhaul (802.11s mesh gate/node for the free-standing Orbi
-# satellites): `wifi_backhaul` from group_vars/mesh_*.yml, radio from the board.
-#
-# The uci logic runs as one rendered shell script instead of per-setting raw
-# tasks: it must discover radios at runtime (a board without the Wi-Fi NIC
-# fitted is a clean no-op) and commit/reload once, atomically.
+# One rendered script instead of per-setting tasks: it discovers radios at
+# runtime (no Wi-Fi card = clean no-op) and commits/reloads once.
 
-# MPSK map file(s): one hostapd wpa_psk_file per `mpsk` SSID, mapping each
-# passphrase to a VLAN (vlanid=). hostapd + dynamic_vlan tags stations into
-# the right br-lan.<vlan> by which password they used. Written first so the
-# wireless config below can reference it. 0600 — contains passphrases.
+# One hostapd wpa_psk_file per `mpsk` SSID, mapping each passphrase to a vlanid
+# so dynamic_vlan puts the station on the matching br-lan.<vlan>. Written
+# before the wireless config that references it.
 - name: Ensure hostapd dir exists
   ansible.builtin.file:
     path: /etc/hostapd
@@ -52,12 +41,9 @@
     path: /tmp/wifi-config.sh
     state: absent
 
-# The mt76/BE14000 EEPROM trap: every radio silently comes up at 6 dBm (about
-# 1/50 of a normal AP), fine in the same room and nothing one wall away — the
-# usual root cause behind "the BPI-R4's coverage is bad". Assert each AP
-# interface reports ≥ wifi_min_txpower_dbm once hostapd is up. A board
-# without radios passes trivially; rc 1 = radios still coming up (retried),
-# rc 2 = power really is low (fails right away).
+# The mt76/BE14000 EEPROM trap can leave every radio at 6 dBm. Assert each AP
+# interface reaches wifi_min_txpower_dbm. rc 1 = radios still coming up
+# (retried), rc 2 = power really is low (fails at once).
 - name: Verify radios transmit at a sane power
   when: wifi_txpower_check | default(true)
   raw: |
@@ -81,8 +67,8 @@
   delay: 5
   until: wifi_txpower.rc != 1
 
-# DAWN (in the firmware image) coordinates the two APs over the LAN and
-# steers clients to the better one; 802.11r above makes that steer fast.
+# DAWN (in the image) coordinates the APs over the LAN and steers clients
+# to the better one.
 - name: Enable and start DAWN roaming daemon
   ansible.builtin.service:
     name: dawn
