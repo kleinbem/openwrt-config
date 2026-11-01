@@ -162,7 +162,8 @@ adguard_ip: "10.0.0.21" # external AdGuard (hass-pi) — used only when adguard_
 
 # ---------------------------------------------------------------------------
 # adguard_local: run AdGuard Home on the gateway (roles/adguard) and point each
-# VLAN's DNS (option 6 + hijack) at its own gateway instead of adguard_ip.
+# VLAN's DNS (option 6) at its own gateway instead of adguard_ip; the hijack
+# still only applies to `filtered` VLANs.
 # ---------------------------------------------------------------------------
 adguard_local: true
 

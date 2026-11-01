@@ -1,8 +1,9 @@
 ---
 # Capture packets on a VLAN (or the WAN) at the gateway and pull the .pcap
 # back for Wireshark: `just capture iot 60`, `just capture wan 30`.
-# BPF filter or SSD capture dir (/tmp is RAM):
-#   ansible-playbook ansible/capture.yml -e vlan=iot -e 'filter=port 53' -e capture_dir=/mnt/ssd
+# BPF filter or SSD capture dir (/tmp is RAM), from the repo root:
+#   ANSIBLE_CONFIG=ansible/ansible.cfg ansible-playbook -i ansible/inventory.ini \
+#     ansible/capture.yml -e vlan=iot -e 'filter=port 53' -e capture_dir=/mnt/ssd
 - name: Packet capture
   hosts: gateways
   gather_facts: false

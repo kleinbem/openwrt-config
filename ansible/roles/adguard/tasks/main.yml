@@ -6,7 +6,8 @@
 # AdGuard takes :53; dnsmasq moves to :5353 and keeps DHCP + lease names, so set
 # AdGuard's upstream for the local domain to 127.0.0.1:5353.
 # AdGuard's own config (upstreams, blocklists, login) is done in its UI at
-# http://<gateway>:3000; this role only does the OpenWrt plumbing.
+# http://<gateway>:3000; keep the UI on :3000 in the setup wizard (LuCI has :80,
+# the firewall rule opens :3000). This role only does the OpenWrt plumbing.
 - name: AdGuard Home native DNS (gateway)
   when: "'gateways' in group_names and (adguard_local | default(false))"
   block:

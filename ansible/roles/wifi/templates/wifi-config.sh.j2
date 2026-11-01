@@ -15,7 +15,8 @@ exit 1
 # roles/network can make it a tagged br-lan trunk port.
 BACKHAUL_RADIO=""
 {% endif %}
-# Radios of a band take `wifi_channel_plan` channels in uci order, else 'auto'.
+# Non-backhaul radios of a band take `wifi_channel_plan` channels in uci order,
+# else 'auto' (the backhaul radio uses wifi_backhaul_channel).
 # Sets CH; must not run in a subshell (the n_<band> counters live here).
 pick_channel() {
   CH=auto

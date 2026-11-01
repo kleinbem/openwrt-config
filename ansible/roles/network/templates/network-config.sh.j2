@@ -144,6 +144,7 @@ while uci -q delete firewall.@forwarding[0]; do :; done
 # Flow offloading stays off: it bypasses the qdisc and so defeats SQM/cake,
 # and the CPU handles NAT at this WAN speed. MT7988 HW offload with 4 GiB RAM
 # has also dropped packets (PPE DMA), so re-test that before ever enabling it.
+# no-link: not found reported upstream.
 uci set firewall.@defaults[0].drop_invalid='1'
 uci set firewall.@defaults[0].synflood_protect='1'
 uci set firewall.@defaults[0].flow_offloading='0'

@@ -1,7 +1,8 @@
 ---
 # ---------------------------------------------------------------------------
-# WireGuard road-warrior endpoint on the gateway. Additive (own wg0 + zone,
-# no routing/NAT changes), and a no-op until wg_server_private_key and
+# WireGuard road-warrior endpoint on the gateway. Additive (own wg0 + zone, no
+# NAT changes); each peer gets a /32 route, so peer IPs must not overlap LAN
+# hosts. A no-op until wg_server_private_key and
 # wg_peers are set (see group_vars/all.yml).
 # ---------------------------------------------------------------------------
 - name: Configure WireGuard road-warrior server

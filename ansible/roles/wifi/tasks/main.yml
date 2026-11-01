@@ -6,8 +6,9 @@
 # One rendered script instead of per-setting tasks: it discovers radios at
 # runtime (no Wi-Fi card = clean no-op) and commits/reloads once.
 
-# One hostapd wpa_psk_file per `mpsk` SSID, mapping each passphrase to a vlanid
-# so dynamic_vlan puts the station on the matching br-lan.<vlan>. Written
+# One hostapd wpa_psk_file per `mpsk` SSID, mapping each WPA2 passphrase to a
+# vlanid so dynamic_vlan puts the station on the matching br-lan.<vlan>. SAE
+# stations aren't covered (open bench check, group_vars/all.yml). Written
 # before the wireless config that references it.
 - name: Ensure hostapd dir exists
   ansible.builtin.file:
