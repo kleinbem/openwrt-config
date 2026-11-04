@@ -47,6 +47,7 @@ banip_feeds:
 # crowdsec-firewall-bouncer packages conflict over /etc/config/crowdsec (apk
 # won't overwrite), so they're not in the image. Set true AND re-add the two
 # packages to the image profile once upstream fixes the conflict.
+# https://github.com/openwrt/packages/issues/28615: OpenWrt 25.12 apk packaging file conflict (/etc/config/crowdsec).
 crowdsec_enable: false
 
 # ---------------------------------------------------------------------------
