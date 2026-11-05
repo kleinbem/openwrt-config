@@ -1,3 +1,4 @@
+---
 version: 2
 updates:
   # Keeps pinned actions current. One grouped PR a week instead of one per

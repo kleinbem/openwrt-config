@@ -13,6 +13,8 @@ rules:
     max-spaces-inside: 1
   truthy:
     allowed-values: ["true", "false"]
+    # GitHub workflows need the bare `on:` key; values stay strict.
+    check-keys: false
   octal-values:
     forbid-implicit-octal: true
     forbid-explicit-octal: true
