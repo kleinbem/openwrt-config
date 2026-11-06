@@ -49,9 +49,38 @@
   raw: /etc/init.d/sysntpd restart
 
 # ---------------------------------------------------------------------------
-# Terminal task: SSH drops as the management IP moves onto infra (mgmt_ip).
-# Reconnect on an infra access port. ignore_errors: the drop is expected.
+# Terminal step: SSH drops as the management IP moves onto infra (mgmt_ip),
+# so the restart runs detached (HUP ignored) and logs its exit code. The play
+# then reconnects on mgmt_ip and fails unless the log says rc=0. The
+# controller must reach mgmt_ip by then (an infra port, or the bench cable).
 # ---------------------------------------------------------------------------
-- name: Restart network (TERMINAL — drops SSH, reconnect on infra VLAN)
-  raw: /etc/init.d/network restart
-  ignore_errors: true
+- name: Restart network (TERMINAL — detached, drops SSH)
+  raw: |
+    rm -f /tmp/network-restart.log
+    (
+      trap '' HUP
+      sleep 2
+      /etc/init.d/network restart >/tmp/network-restart.out 2>&1
+      echo "rc=$?" >/tmp/network-restart.log
+    ) </dev/null >/dev/null 2>&1 &
+
+- name: Give the restart time to finish
+  ansible.builtin.pause:
+    seconds: 30
+
+- name: Reconnect on the management IP
+  vars:
+    ansible_host: "{{ mgmt_ip }}"
+  ansible.builtin.wait_for_connection:
+    timeout: 120
+
+- name: Check the restart result
+  vars:
+    ansible_host: "{{ mgmt_ip }}"
+  raw: cat /tmp/network-restart.log 2>/dev/null || echo pending
+  register: network_restart
+  changed_when: false
+  retries: 9
+  delay: 10
+  until: network_restart.stdout is search('rc=')
+  failed_when: network_restart.stdout is not search('rc=0')
