@@ -19,7 +19,8 @@
 
 1. **Ansible:**
     - Use `raw` or `command` modules for `uci` interactions on OpenWrt where Python modules fail.
-    - Python IS available on these routers (installed via `openwrt-builder`), so prefer standard modules (`copy`, `file`, `systemd`) where possible.
+    - Python IS available on these routers (installed via `openwrt-builder`), so prefer standard modules (`copy`, `file`, `template`) where possible.
+    - Services run under procd, not systemd: use `ansible.builtin.service` or `/etc/init.d/<name> enable|restart`, never the `systemd` module.
 2. **LXC (dormant capability):** ap-upstairs keeps NVMe at `/srv/lxc` +
     LXC config, but the NixOS "brain" containers were dropped 2026-07-18
     (never deployed; all tenants live on the NixOS fleet).
