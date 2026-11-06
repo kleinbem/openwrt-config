@@ -1,0 +1,57 @@
+---
+# ---------------------------------------------------------------------------
+# Network/VLAN role — segments the flat 10.x per ../../../../../openwrt/docs/NETWORK_PLAN.md.
+# ---------------------------------------------------------------------------
+# Inputs: `vlans` (group_vars/all.yml), the board's `port_map` and `mgmt_ip`.
+# Gateway gets per-VLAN interfaces, DHCP and the firewall matrix; an AP gets the
+# same bridge VLANs, one mgmt IP on infra and plain L2 for the rest.
+# Don't move a fleet host out of infra: Tang and the unlock hosts must share a
+# zone so clevis unlock never crosses the firewall.
+- name: Render network uci script
+  ansible.builtin.template:
+    src: network-config.sh.j2
+    dest: /tmp/network-config.sh
+    mode: "0700"
+
+- name: Stage network configuration (uci commits only — no reload yet)
+  raw: sh /tmp/network-config.sh
+
+- name: Remove rendered script
+  ansible.builtin.file:
+    path: /tmp/network-config.sh
+    state: absent
+
+- name: Enable + restart dnsmasq (gateway serves per-VLAN DHCP)
+  when: "'gateways' in group_names"
+  raw: /etc/init.d/dnsmasq enable && /etc/init.d/dnsmasq restart
+
+- name: Restart firewall (gateway applies the zone matrix)
+  when: "'gateways' in group_names"
+  raw: /etc/init.d/firewall restart
+
+# mDNS reflector (gateway only — it holds the L3 interfaces in both VLANs;
+# on the AP those VLANs are L2 bridges with no address, so nothing to
+# reflect). Bridges service discovery trusted<->iot.
+- name: Configure mDNS reflector (avahi)
+  when: "'gateways' in group_names"
+  block:
+    - name: Render avahi reflector config
+      ansible.builtin.template:
+        src: avahi-daemon.conf.j2
+        dest: /etc/avahi/avahi-daemon.conf
+        mode: "0644"
+    - name: Enable + restart avahi reflector
+      raw: /etc/init.d/avahi-daemon enable && /etc/init.d/avahi-daemon restart
+
+# NTP server + timezone take effect on the next sysntpd cycle; nudge it now
+# so served time is correct immediately (both hosts).
+- name: Restart sysntpd (apply NTP server / timezone)
+  raw: /etc/init.d/sysntpd restart
+
+# ---------------------------------------------------------------------------
+# Terminal task: SSH drops as the management IP moves onto infra (mgmt_ip).
+# Reconnect on an infra access port. ignore_errors: the drop is expected.
+# ---------------------------------------------------------------------------
+- name: Restart network (TERMINAL — drops SSH, reconnect on infra VLAN)
+  raw: /etc/init.d/network restart
+  ignore_errors: true

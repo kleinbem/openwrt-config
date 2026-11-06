@@ -1,0 +1,69 @@
+---
+name: Lint
+
+# Runs the same gate as `just check-all` in the openwrt meta-workspace, but
+# standalone (this repo has no flake). Tool versions are pinned to match the
+# nix-devshells#openwrt shell — bump them together when that shell changes.
+# Local reference: `just maintenance::lint-all` / `just check-all`.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install linters (pinned to nix-devshells#openwrt)
+        run: |
+          python -m pip install --upgrade pip
+          pip install "ansible-lint==25.8.2" "yamllint==1.37.1"
+          # group_vars/all.yml resolves secrets via the community.sops lookup;
+          # install it so ansible can parse the playbook cleanly.
+          ansible-galaxy collection install community.sops
+
+      - name: yamllint
+        run: yamllint -c .yamllint ansible
+
+      - name: ansible-lint
+        run: ansible-lint ansible/site.yml
+
+      - name: Ansible syntax check
+        run: ansible-playbook -i ansible/inventory.ini ansible/site.yml --syntax-check
+
+      - name: Render templates + shellcheck the generated scripts
+        # Same as `just render-check`: every role template per inventory host
+        # with ci/dummy-secrets.yml, localhost only, never a router.
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          ansible-playbook -i ansible/inventory.ini ci/render-templates.yml -e @ci/dummy-secrets.yml
+          # SC2016: a literal $ inside single quotes is the correctly quoted dummy secret.
+          shellcheck -s sh -e SC2016 .render/*/*.sh
+
+      - name: shellcheck (tracked shell scripts)
+        run: |
+          # apt's shellcheck; skip cleanly when there are no shell scripts.
+          files=$(git ls-files '*.sh')
+          if [ -z "$files" ]; then
+            echo "No tracked shell scripts — skipping."
+            exit 0
+          fi
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          # shellcheck disable=SC2086
+          shellcheck $files

@@ -1,0 +1,24 @@
+---
+# Banana Pi BPI-R4 (MediaTek MT7988A, Wi-Fi 7 via the BE14000 / MT7996 card).
+# Group membership is generated from inventory.nix (`board = "bpi-r4"`).
+
+# OpenWrt 25.12 names: SFP1 cage = sfp-wan, SFP2 cage = sfp-lan. WAN is sfp-wan
+# because the 2 Gbit line needs a multi-gig port (the RJ45 `wan` is 1G, spare).
+# The builder's uci-defaults set it; roles/qos and capture.yml read wan_iface.
+wan_iface: sfp-wan
+lan_iface: br-lan
+
+# roles/common asserts the kernel sees all of it: a `mem=` left in a saved
+# U-Boot environment silently overrides uEnv.txt and survives a reflash.
+expected_ram_mib: 4096
+
+# Per-band channel widths for the BE14000 (MT7996, Wi-Fi 7 / EHT).
+wifi_htmodes: { 2g: "EHT20", 5g: "EHT160", 6g: "EHT320" }
+# One radio per band → every radio picks its channel itself.
+wifi_channel_plan: {}
+
+# Port → zone map, same on gateway and AP. sfp-lan is the SFP+ link between
+# the two BPI-R4s, a tagged trunk carrying all VLANs.
+port_map:
+  trunk: [sfp-lan]
+  untagged: { lan1: infra, lan2: trusted, lan3: cameras } # cameras = wired cams

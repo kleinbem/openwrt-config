@@ -1,0 +1,34 @@
+---
+# Netgear Orbi RBR50 / RBS50 v1 (IPQ4019, Wi-Fi 5), access points only.
+# Both models share one DTS, so board_orbi_rbs50.yml is a symlink to this file.
+# Radios: IPQ4019 2.4 GHz 2x2, IPQ4019 5 GHz 2x2, QCA9984 5 GHz 4x4; ports lan1-3 + wan.
+# v2 units (NAND, `artmtd -r hw_revision` = 02) aren't in OpenWrt stable
+# (upstream PR #22321): never flash a v1 image on one.
+
+# No routing role here; kept for the shared capture.yml / qos templates.
+wan_iface: wan
+lan_iface: br-lan
+expected_ram_mib: 512
+
+# Wi-Fi 5: ath10k rejects EHT/HE modes. 80 MHz on both 5 GHz radios.
+wifi_htmodes: { 2g: "HT20", 5g: "VHT80" }
+# Two 5 GHz radios, so pin them apart: DFS 100 for clients, 36 for the other
+# (149+ is 25 mW SRD in Ireland). Radios take these in uci order; a backhaul
+# radio is skipped and uses wifi_backhaul_channel instead.
+wifi_channel_plan: { 5g: [100, 36] }
+
+# Backhaul on the 4x4 QCA9984, which enumerates after the two on-SoC radios
+# (second 5 GHz radio, index 1). Check stream counts with `iw phy` if unsure.
+# Non-DFS channel on purpose: a radar hit would drop every satellite at once.
+wifi_backhaul_band: 5g
+wifi_backhaul_radio_index: 1
+wifi_backhaul_channel: 36
+wifi_backhaul_htmode: VHT80
+
+# Orbi as a wired AP: the port labelled "Internet"/WAN carries the tagged
+# trunk back to a BPI-R4; the three LAN ports are untagged access ports like
+# on the BPI-R4s. Port labels come from OpenWrt's rbx50 DTS — bench-verify
+# with `ls /sys/class/net` after the first flash.
+port_map:
+  trunk: [wan]
+  untagged: { lan1: infra, lan2: trusted, lan3: cameras }

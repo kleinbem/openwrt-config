@@ -1,0 +1,46 @@
+---
+# Isolate or release a device live at the gateway with a MAC-keyed firewall DROP,
+# without moving its VLAN. Run on demand: `just quarantine MAC [NAME]`,
+# `just release MAC`, `just quarantine-list`.
+# A spoofed MAC gets around it; for a real adversary rotate that VLAN's key.
+- name: Device quarantine control
+  hosts: gateways
+  gather_facts: false
+  vars:
+    state: "on"
+  tasks:
+    - name: Validate a MAC was given
+      ansible.builtin.assert:
+        that: mac is defined and mac | length >= 12
+        fail_msg: "Pass -e mac=AA:BB:CC:DD:EE:FF"
+
+    - name: List quarantined devices
+      when: state == 'list'
+      block:
+        - name: Read quarantine rules
+          raw: "uci show firewall | grep -E 'name=.Quarantine-' || echo 'none'"
+          register: quarantine_list
+          changed_when: false
+        - name: Show
+          ansible.builtin.debug:
+            var: quarantine_list.stdout_lines
+
+    - name: Quarantine — DROP all traffic from the MAC (any zone)
+      when: state == 'on'
+      raw: |
+        S=q_{{ mac | replace(':', '') | lower }}
+        uci set firewall.$S=rule
+        uci set firewall.$S.name='Quarantine-{{ name | default(mac) }}'
+        uci set firewall.$S.src='*'
+        uci set firewall.$S.src_mac='{{ mac }}'
+        uci set firewall.$S.target='DROP'
+        uci commit firewall
+        /etc/init.d/firewall reload
+
+    - name: Release — remove the quarantine rule
+      when: state == 'off'
+      raw: |
+        S=q_{{ mac | replace(':', '') | lower }}
+        uci -q delete firewall.$S || true
+        uci commit firewall
+        /etc/init.d/firewall reload

@@ -1,0 +1,35 @@
+---
+# ---------------------------------------------------------------------------
+# SQM/cake on the gateway WAN against bufferbloat. layer_cake honours the DSCP
+# marks call apps set, so video calls keep priority on a saturated link.
+# ---------------------------------------------------------------------------
+# No-op until wan_down_mbit/wan_up_mbit are set: too high defeats the shaping,
+# too low wastes throughput.
+- name: Configure SQM/cake on the WAN
+  when: "'gateways' in group_names and (wan_down_mbit | int) > 0 and (wan_up_mbit | int) > 0"
+  block:
+    - name: Set cake queue on the WAN interface
+      raw: |
+        uci set sqm.wan=queue
+        uci set sqm.wan.interface='{{ wan_iface }}'
+        uci set sqm.wan.enabled='1'
+        uci set sqm.wan.download='{{ (wan_down_mbit | int) * 1000 }}'
+        uci set sqm.wan.upload='{{ (wan_up_mbit | int) * 1000 }}'
+        uci set sqm.wan.qdisc='cake'
+        uci set sqm.wan.script='layer_cake.qos'
+        uci set sqm.wan.qdisc_advanced='1'
+        uci set sqm.wan.egress_ecn='NOECN'
+        uci set sqm.wan.ingress_ecn='ECN'
+        uci set sqm.wan.linklayer='{{ qos_linklayer | default("ethernet") }}'
+        uci set sqm.wan.overhead='{{ qos_overhead | default(44) }}'
+        uci commit sqm
+
+    - name: Enable + (re)start SQM
+      raw: /etc/init.d/sqm enable && /etc/init.d/sqm restart
+
+- name: Note when SQM is skipped (no line speed set)
+  when: "'gateways' in group_names and ((wan_down_mbit | int) == 0 or (wan_up_mbit | int) == 0)"
+  ansible.builtin.debug:
+    msg: >-
+      SQM/cake not configured — set wan_down_mbit / wan_up_mbit in group_vars
+      to your measured line speed (~90-95%) to enable bufferbloat control.

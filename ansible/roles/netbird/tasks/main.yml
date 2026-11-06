@@ -1,0 +1,30 @@
+---
+# ---------------------------------------------------------------------------
+# NetBird: enroll the router into the fleet mesh. No-op until netbird_setup_key
+# (a dedicated device key) is in shared.yaml; only enrolls when not connected.
+# Only the BPI-R4 image ships netbird (too big for the Orbi rootfs).
+# ---------------------------------------------------------------------------
+- name: Enroll router into NetBird
+  when: (netbird_setup_key | default('')) | length > 0
+  block:
+    - name: Enable + start the NetBird service
+      raw: /etc/init.d/netbird enable && /etc/init.d/netbird start
+
+    - name: Check current NetBird status
+      raw: netbird status 2>/dev/null || true
+      register: netbird_status
+      changed_when: false
+
+    - name: Enroll with the setup key (only if not already connected)
+      raw: >-
+        netbird up --setup-key '{{ netbird_setup_key }}'
+        {% if netbird_management_url | default('') %}--management-url '{{ netbird_management_url }}'{% endif %}
+      when: "'Connected' not in (netbird_status.stdout | default(''))"
+
+- name: Note when NetBird is not configured
+  when: (netbird_setup_key | default('')) | length == 0
+  ansible.builtin.debug:
+    msg: >-
+      NetBird not enrolled — add netbird_setup_key to
+      kleinbem-secrets/openwrt/shared.yaml (a dedicated device key) to join
+      the router to the fleet mesh.

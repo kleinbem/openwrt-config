@@ -1,0 +1,43 @@
+---
+- name: Set System Hostname
+  raw: uci set system.@system[0].hostname="{{ inventory_hostname }}" && uci commit system
+
+# Timezone: both the human-readable zonename (needs zoneinfo-europe, baked
+# into the image) and the POSIX TZ string (busybox reads this directly).
+# Correct time matters on the cameras/iot VLANs — cameras have no WAN, so
+# the router's NTP (below) is their only clock source.
+- name: Set timezone
+  raw: |
+    uci set system.@system[0].zonename='{{ timezone }}'
+    uci set system.@system[0].timezone='{{ timezone_posix }}'
+    uci commit system
+
+# The kernel must see the board's RAM (`expected_ram_mib`, 15 % slack for
+# firmware reservations) with no `mem=` on the cmdline. Catches a stale `mem=`
+# kept in a saved U-Boot environment, or bad RAM.
+- name: Verify the board sees its full RAM (no stale mem= limit)
+  when: expected_ram_mib is defined
+  raw: |
+    kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+    min=$(( {{ expected_ram_mib }} * 1024 * 85 / 100 ))
+    echo "MemTotal: ${kb} kB (expected ~$(( {{ expected_ram_mib }} * 1024 )) kB)"
+    if grep -qE '(^| )mem=' /proc/cmdline; then
+      echo "cmdline carries a mem= limit: $(cat /proc/cmdline)"; exit 2
+    fi
+    [ "$kb" -ge "$min" ] || { echo "MemTotal below the expected minimum ${min} kB — stale mem= in U-Boot env or bad RAM?"; exit 3; }
+  changed_when: false
+
+# Remote syslog when remote_syslog_ip is set, else local only. The bigger ring
+# buffer keeps recent logs between polls.
+- name: Configure remote syslog + local log buffer
+  raw: |
+    uci set system.@system[0].log_size='128'
+    {% if remote_syslog_ip | default('') %}
+    uci set system.@system[0].log_ip='{{ remote_syslog_ip }}'
+    uci set system.@system[0].log_port='{{ remote_syslog_port | default(514) }}'
+    uci set system.@system[0].log_proto='{{ remote_syslog_proto | default("udp") }}'
+    {% else %}
+    uci -q delete system.@system[0].log_ip || true
+    {% endif %}
+    uci commit system
+    /etc/init.d/log restart 2>/dev/null || true

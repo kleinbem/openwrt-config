@@ -1,0 +1,6 @@
+---
+# inventory.nix tag `mesh-node`: Orbi satellites whose only uplink is the
+# 802.11s backhaul. Their wired trunk port stays unconfigured so plugging it
+# in can't loop the bridge; lan access ports still work. First provisioning
+# is wired at 192.168.1.1 like every board, after that over the mesh.
+wifi_backhaul: node
