@@ -16,6 +16,7 @@
       changed_when: false
 
     - name: Enroll with the setup key (only if not already connected)
+      no_log: true # the setup key is in the command
       raw: >-
         netbird up --setup-key '{{ netbird_setup_key }}'
         {% if netbird_management_url | default('') %}--management-url '{{ netbird_management_url }}'{% endif %}
