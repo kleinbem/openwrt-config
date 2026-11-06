@@ -36,7 +36,7 @@ jobs:
           pip install "ansible-lint==25.8.2" "yamllint==1.37.1"
           # group_vars/all.yml resolves secrets via the community.sops lookup;
           # install it so ansible can parse the playbook cleanly.
-          ansible-galaxy collection install community.sops
+          ansible-galaxy collection install "community.sops:==2.5.0"
 
       - name: yamllint
         run: yamllint -c .yamllint ansible
@@ -59,11 +59,9 @@ jobs:
       - name: shellcheck (tracked shell scripts)
         run: |
           # apt's shellcheck; skip cleanly when there are no shell scripts.
-          files=$(git ls-files '*.sh')
-          if [ -z "$files" ]; then
+          if [ -z "$(git ls-files '*.sh')" ]; then
             echo "No tracked shell scripts — skipping."
             exit 0
           fi
           sudo apt-get update && sudo apt-get install -y shellcheck
-          # shellcheck disable=SC2086
-          shellcheck $files
+          git ls-files -z '*.sh' | xargs -0 shellcheck
