@@ -64,11 +64,16 @@
       raw: |
         set -e
         f=/etc/nftables.d/50-quarantine.nft
-        macs=$(uci show firewall | sed -n "s/^firewall\.q_[0-9a-f]*\.src_mac='\(.*\)'$/\1/p" | tr 'A-F' 'a-f' | sort -u)
+        show=$(uci show firewall)
+        # Exact single-MAC values only: anything else could break the ruleset.
+        macs=$(printf '%s\n' "$show" \
+          | sed -n "s/^firewall\.q_[0-9a-f]*\.src_mac='\(\([0-9A-Fa-f]\{2\}:\)\{5\}[0-9A-Fa-f]\{2\}\)'$/\1/p" \
+          | tr 'A-F' 'a-f' | sort -u)
+        mkdir -p /etc/nftables.d
+        [ -e "$f" ] && cp "$f" /tmp/50-quarantine.nft.prev || rm -f /tmp/50-quarantine.nft.prev
         if [ -z "$macs" ]; then
           rm -f "$f"
         else
-          mkdir -p /etc/nftables.d
           {
             echo "# Managed by openwrt-config ansible/quarantine.yml, do not edit."
             echo "set quarantine_macs {"
@@ -81,4 +86,11 @@
             echo "}"
           } >"$f"
         fi
+        # Check the whole ruleset first; on failure put the old file back.
+        if ! fw4 -q check; then
+          if [ -e /tmp/50-quarantine.nft.prev ]; then mv /tmp/50-quarantine.nft.prev "$f"; else rm -f "$f"; fi
+          echo "fw4 check failed with the new quarantine set; previous file restored" >&2
+          exit 1
+        fi
+        rm -f /tmp/50-quarantine.nft.prev
         /etc/init.d/firewall reload
