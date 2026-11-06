@@ -117,8 +117,9 @@ wifi_networks:
   # 2. MPSK: the password picks the VLAN. -W3 (sae-mixed) carries all but
   #    guest; -W2 (WPA2) is for gear that chokes on WPA3 and carries only
   #    iot/cameras, so a cracked WPA2 password exposes only isolated VLANs.
-  #    Bench-check: 25.12 wpa_psk_file dynamic-VLAN regression (#20355), and
-  #    whether SAE clients on -W3 get a VLAN at all (wpa_psk_file is WPA2-only).
+  #    Bench-check: the wpa_psk_file dynamic-VLAN regression (upstream:
+  #    openwrt/openwrt#20355, closed 2025-11, so 25.12.x should have the fix),
+  #    and whether SAE clients on -W3 get a VLAN at all (wpa_psk_file is WPA2-only).
   - name: mpsk_w3
     ssid: "{{ wifi_ssid }}-W3"
     mpsk: true
