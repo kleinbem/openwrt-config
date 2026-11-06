@@ -35,6 +35,8 @@
       when: state == 'on'
       raw: |
         set -e
+        revert_on_failure() { rc=$?; [ "$rc" -eq 0 ] || uci revert firewall; }
+        trap revert_on_failure EXIT
         S=q_{{ mac | replace(':', '') | lower }}
         for R in "$S" "${S}_fwd"; do
           uci set firewall.$R=rule
@@ -45,7 +47,6 @@
           uci set firewall.$R.target='DROP'
         done
         uci set firewall.${S}_fwd.dest='*'
-        uci commit firewall
 
     - name: Release — remove the quarantine rules
       when: state == 'off'
@@ -53,18 +54,22 @@
         S=q_{{ mac | replace(':', '') | lower }}
         uci -q delete firewall.$S || true
         uci -q delete firewall.${S}_fwd || true
-        uci commit firewall
 
     # fw4 includes /etc/nftables.d/*.nft in its table on every reload. A drop at
     # prerouting/raw runs before conntrack, so it also cuts flows that were open
     # at quarantine time. The uci rules above are the record; the set mirrors
     # them, and the file exists only while something is quarantined.
-    - name: Sync the quarantine nft set with the uci rules, then reload
+    # The tasks above only stage uci changes: they're committed here once the
+    # new ruleset passes fw4 check, and reverted with the old file otherwise.
+    - name: Sync the quarantine nft set with the uci rules, then commit and reload
       when: state in ['on', 'off']
       raw: |
         set -e
         f=/etc/nftables.d/50-quarantine.nft
         show=$(uci show firewall)
+        bad=$(printf '%s\n' "$show" | grep '^firewall\.q_[0-9a-f]*\.src_mac=' \
+          | grep -v -E "src_mac='([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}'$" || true)
+        [ -z "$bad" ] || printf 'WARNING: not in the nft set, open flows stay up (release and re-quarantine):\n%s\n' "$bad"
         # Exact single-MAC values only: anything else could break the ruleset.
         macs=$(printf '%s\n' "$show" \
           | sed -n "s/^firewall\.q_[0-9a-f]*\.src_mac='\(\([0-9A-Fa-f]\{2\}:\)\{5\}[0-9A-Fa-f]\{2\}\)'$/\1/p" \
@@ -89,8 +94,10 @@
         # Check the whole ruleset first; on failure put the old file back.
         if ! fw4 -q check; then
           if [ -e /tmp/50-quarantine.nft.prev ]; then mv /tmp/50-quarantine.nft.prev "$f"; else rm -f "$f"; fi
-          echo "fw4 check failed with the new quarantine set; previous file restored" >&2
+          uci revert firewall
+          echo "fw4 check failed; uci changes reverted and the previous file restored" >&2
           exit 1
         fi
         rm -f /tmp/50-quarantine.nft.prev
+        uci commit firewall
         /etc/init.d/firewall reload
