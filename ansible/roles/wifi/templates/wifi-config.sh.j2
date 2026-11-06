@@ -3,6 +3,12 @@
 # Discovers whichever radios the board has and puts each SSID only on its
 # allowed bands. Safe to re-run: it rebuilds every wifi-iface section.
 set -e
+# On failure drop the staged wipe, so a later commit (LuCI) can't apply it.
+revert_on_failure() {
+  rc=$?
+  [ "$rc" -eq 0 ] || uci -q revert wireless
+}
+trap revert_on_failure EXIT
 
 {% set bh = (wifi_backhaul | default('none')) in ['gate', 'node'] %}
 {% if bh %}

@@ -6,6 +6,27 @@
 # One rendered script instead of per-setting tasks: it discovers radios at
 # runtime (no Wi-Fi card = clean no-op) and commits/reloads once.
 
+# Names end up in uci section names and shell variable names.
+- name: Validate Wi-Fi network names and channel plan bands
+  ansible.builtin.assert:
+    that:
+      - wifi_networks | map(attribute='name') | reject('match', '^[A-Za-z0-9_]+\\Z') | list | length == 0
+      - (wifi_channel_plan | default({})).keys() | reject('in', ['2g', '5g', '6g', '60g']) | list | length == 0
+    fail_msg: wifi_networks names must match [A-Za-z0-9_]+ and wifi_channel_plan keys must be 2g/5g/6g/60g.
+    quiet: true
+
+# Each MPSK key is one wpa_psk_file line: 8-63 characters, or a 64-hex PSK.
+# no_log hides the message, hence the task name says what's wrong.
+- name: Validate MPSK keys (8-63 chars, no leading/trailing space, no leading '#', no newline)
+  ansible.builtin.assert:
+    that: _mpsk_keys | reject('match', '^([^\\s#][^\\n]{6,61}[^\\s]|[0-9A-Fa-f]{64})\\Z') | list | length == 0
+    quiet: true
+  vars:
+    _mpsk_keys: >-
+      {{ wifi_networks | selectattr('mpsk', 'defined') | selectattr('mpsk')
+         | map(attribute='psk_vlans') | flatten | map(attribute='key') | list }}
+  no_log: true
+
 # One hostapd wpa_psk_file per `mpsk` SSID, mapping each WPA2 passphrase to a
 # vlanid so dynamic_vlan puts the station on the matching br-lan.<vlan>. SAE
 # stations aren't covered (open bench check, group_vars/all.yml). Written
@@ -52,6 +73,7 @@
   when: wifi_txpower_check | default(true)
   raw: |
     uci -q show wireless | grep -q '=wifi-device$' || { echo "no radios — nothing to check"; exit 0; }
+    command -v iw >/dev/null || { echo "iw is missing from the image"; exit 3; }
     list=$(iw dev 2>/dev/null | awk '
       /^[[:space:]]*Interface/ { i = $2; ap = 0 }
       /^[[:space:]]*type AP/   { ap = 1 }

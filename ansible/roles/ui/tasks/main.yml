@@ -21,7 +21,7 @@
 # clickable overview. LuCI itself stays one tile away.
 - name: Serve the hub at "/" (index before the LuCI redirect)
   raw: |
-    uci -q delete_list uhttpd.main.index_page='index.html' 2>/dev/null || true
+    uci -q del_list uhttpd.main.index_page='index.html' 2>/dev/null || true
     uci add_list uhttpd.main.index_page='index.html'
     uci commit uhttpd
     /etc/init.d/uhttpd reload 2>/dev/null || true
