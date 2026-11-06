@@ -228,16 +228,18 @@ uci set firewall.rule_mdns_iot.proto='udp'
 uci set firewall.rule_mdns_iot.dest_port='5353'
 uci set firewall.rule_mdns_iot.target='ACCEPT'
 
-# Management plane = infra only. trusted has input ACCEPT (for DNS/DHCP/NTP)
-# but must NOT administer the router — reject SSH/HTTP/HTTPS from trusted.
-# iot/cameras/guest already can't (zone input REJECT). Admin from infra
-# (the workstation lives there).
-uci set firewall.rule_noadmin_trusted=rule
-uci set firewall.rule_noadmin_trusted.name='Deny-mgmt-from-trusted'
-uci set firewall.rule_noadmin_trusted.src='trusted'
-uci set firewall.rule_noadmin_trusted.proto='tcp'
-uci set firewall.rule_noadmin_trusted.dest_port='22 80 443'
-uci set firewall.rule_noadmin_trusted.target='REJECT'
+# Management plane = infra only (the workstation lives there). Every other
+# `dns: trusted` zone has input ACCEPT (for DNS/DHCP/NTP) but must NOT
+# administer the router, so reject SSH/HTTP/HTTPS from each. The input-REJECT
+# zones (filtered, local) already can't.
+{% for vlan in vlans if vlan.dns == 'trusted' and vlan.name != 'infra' %}
+uci set firewall.rule_noadmin_{{ vlan.name }}=rule
+uci set firewall.rule_noadmin_{{ vlan.name }}.name='Deny-mgmt-from-{{ vlan.name }}'
+uci set firewall.rule_noadmin_{{ vlan.name }}.src='{{ vlan.name }}'
+uci set firewall.rule_noadmin_{{ vlan.name }}.proto='tcp'
+uci set firewall.rule_noadmin_{{ vlan.name }}.dest_port='22 80 443'
+uci set firewall.rule_noadmin_{{ vlan.name }}.target='REJECT'
+{% endfor %}
 
 # DNS hijack: force every :53 query from the `filtered` zones to AdGuard so
 # gear with a hardcoded resolver (8.8.8.8, …) can't bypass filtering. The
