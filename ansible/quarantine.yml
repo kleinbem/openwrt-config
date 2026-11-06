@@ -18,29 +18,41 @@
       when: state == 'list'
       block:
         - name: Read quarantine rules
-          raw: "uci show firewall | grep -E 'name=.Quarantine-' || echo 'none'"
+          # One line per device: only the input rule's section name is q_<hex>.
+          raw: |
+            out=$(uci show firewall | sed -n "s/^firewall\.q_[0-9a-f]*\.name='\(Quarantine-.*\)'$/\1/p")
+            echo "${out:-none}"
           register: quarantine_list
           changed_when: false
         - name: Show
           ansible.builtin.debug:
             var: quarantine_list.stdout_lines
 
-    - name: Quarantine — DROP all traffic from the MAC (any zone)
+    # fw4 puts a rule without dest in the input chain (traffic to the router)
+    # and one with dest in forward, so it takes both. proto defaults to tcp+udp.
+    # Flows already established keep running: fw4 accepts them before these rules.
+    - name: Quarantine — DROP all traffic from the MAC (to the router and through it)
       when: state == 'on'
       raw: |
+        set -e
         S=q_{{ mac | replace(':', '') | lower }}
-        uci set firewall.$S=rule
-        uci set firewall.$S.name='Quarantine-{{ name | default(mac) }}'
-        uci set firewall.$S.src='*'
-        uci set firewall.$S.src_mac='{{ mac }}'
-        uci set firewall.$S.target='DROP'
+        for R in "$S" "${S}_fwd"; do
+          uci set firewall.$R=rule
+          uci set firewall.$R.name='Quarantine-{{ name | default(mac, true) }}'
+          uci set firewall.$R.src='*'
+          uci set firewall.$R.src_mac='{{ mac }}'
+          uci set firewall.$R.proto='all'
+          uci set firewall.$R.target='DROP'
+        done
+        uci set firewall.${S}_fwd.dest='*'
         uci commit firewall
         /etc/init.d/firewall reload
 
-    - name: Release — remove the quarantine rule
+    - name: Release — remove the quarantine rules
       when: state == 'off'
       raw: |
         S=q_{{ mac | replace(':', '') | lower }}
         uci -q delete firewall.$S || true
+        uci -q delete firewall.${S}_fwd || true
         uci commit firewall
         /etc/init.d/firewall reload
