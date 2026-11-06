@@ -13,6 +13,7 @@
   block:
     - name: Move dnsmasq off :53 (AdGuard takes it); keep DHCP + local names
       raw: |
+        [ -x /etc/init.d/adguardhome ] || { echo "adguardhome is not installed; dnsmasq stays on :53"; exit 1; }
         uci set dhcp.@dnsmasq[0].port='5353'
         uci commit dhcp
         /etc/init.d/dnsmasq restart

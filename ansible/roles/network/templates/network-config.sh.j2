@@ -3,6 +3,12 @@
 # matrix: openwrt/docs/NETWORK_PLAN.md. Commits only: the network restart
 # (which drops SSH) is a separate, terminal task.
 set -e
+# On failure drop the staged changes, so a later commit (LuCI) can't apply half of them.
+revert_on_failure() {
+  rc=$?
+  [ "$rc" -eq 0 ] || for p in network dhcp system firewall; do uci -q revert "$p"; done
+}
+trap revert_on_failure EXIT
 {% set is_gw = 'gateways' in group_names %}
 {# port_map comes from this board's group_vars/board_<board>.yml #}
 {% set pm = port_map %}

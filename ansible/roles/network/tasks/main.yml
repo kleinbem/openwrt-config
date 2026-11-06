@@ -50,8 +50,11 @@
 
 # ---------------------------------------------------------------------------
 # Terminal task: SSH drops as the management IP moves onto infra (mgmt_ip).
-# Reconnect on an infra access port. ignore_errors: the drop is expected.
+# Reconnect on an infra access port. The drop shows as unreachable or ssh's
+# rc 255 and is expected; any other failure of the restart still fails.
 # ---------------------------------------------------------------------------
 - name: Restart network (TERMINAL — drops SSH, reconnect on infra VLAN)
   raw: /etc/init.d/network restart
-  ignore_errors: true
+  register: network_restart
+  ignore_unreachable: true
+  failed_when: network_restart.rc | default(0) not in [0, 255]
