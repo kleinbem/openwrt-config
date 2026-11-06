@@ -66,6 +66,7 @@
       raw: |
         set -e
         f=/etc/nftables.d/50-quarantine.nft
+        prev=/tmp/50-quarantine.nft.prev.$$
         show=$(uci show firewall)
         bad=$(printf '%s\n' "$show" | grep '^firewall\.q_[0-9a-f]*\.src_mac=' \
           | grep -v -E "src_mac='([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}'$" || true)
@@ -75,7 +76,7 @@
           | sed -n "s/^firewall\.q_[0-9a-f]*\.src_mac='\(\([0-9A-Fa-f]\{2\}:\)\{5\}[0-9A-Fa-f]\{2\}\)'$/\1/p" \
           | tr 'A-F' 'a-f' | sort -u)
         mkdir -p /etc/nftables.d
-        [ -e "$f" ] && cp "$f" /tmp/50-quarantine.nft.prev || rm -f /tmp/50-quarantine.nft.prev
+        [ -e "$f" ] && cp "$f" "$prev" || rm -f "$prev"
         if [ -z "$macs" ]; then
           rm -f "$f"
         else
@@ -92,12 +93,11 @@
           } >"$f"
         fi
         # Check the whole ruleset first; on failure put the old file back.
-        if ! fw4 -q check; then
-          if [ -e /tmp/50-quarantine.nft.prev ]; then mv /tmp/50-quarantine.nft.prev "$f"; else rm -f "$f"; fi
+        if ! fw4 -q check || ! uci commit firewall; then
+          if [ -e "$prev" ]; then mv "$prev" "$f"; else rm -f "$f"; fi
           uci revert firewall
-          echo "fw4 check failed; uci changes reverted and the previous file restored" >&2
+          echo "fw4 check or uci commit failed; uci changes reverted, previous file restored" >&2
           exit 1
         fi
-        rm -f /tmp/50-quarantine.nft.prev
-        uci commit firewall
+        rm -f "$prev"
         /etc/init.d/firewall reload
