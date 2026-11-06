@@ -6,15 +6,25 @@
 - name: Configure fleet gateway DHCP + DNS handoff
   when: "'gateways' in group_names"
   block:
+    # uci section names allow only [A-Za-z0-9_], so a host name like hass-pi
+    # can't be one: key the section by MAC and keep the name in `name`.
+    # Sections from older runs were keyed by name; drop those that were valid.
     - name: Pin fleet static DHCP reservations
       raw: |
-        uci -q delete dhcp.{{ item.name }}
-        uci set dhcp.{{ item.name }}=host
-        uci set dhcp.{{ item.name }}.name='{{ item.name }}'
-        uci set dhcp.{{ item.name }}.ip='{{ item.ip }}'
-        uci set dhcp.{{ item.name }}.mac='{{ item.mac }}'
+        set -e
+        S=lease_{{ item.mac | replace(':', '') | lower }}
+        {% if item.name is match('^[A-Za-z0-9_]+$') %}
+        uci -q delete dhcp.{{ item.name }} || true
+        {% endif %}
+        uci -q delete dhcp.$S || true
+        uci set dhcp.$S=host
+        uci set dhcp.$S.name='{{ item.name }}'
+        uci set dhcp.$S.ip='{{ item.ip }}'
+        uci set dhcp.$S.mac='{{ item.mac }}'
         uci commit dhcp
       loop: "{{ static_leases }}"
+      loop_control:
+        label: "{{ item.name }}"
 
     - name: Restart dnsmasq (apply DHCP/DNS changes)
       raw: /etc/init.d/dnsmasq restart
