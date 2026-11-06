@@ -236,14 +236,16 @@ uci set firewall.rule_mdns_iot.target='ACCEPT'
 
 # Management plane = infra only (the workstation lives there). Every other
 # `dns: trusted` zone has input ACCEPT (for DNS/DHCP/NTP) but must NOT
-# administer the router, so reject SSH/HTTP/HTTPS from each. The input-REJECT
-# zones (filtered, local) already can't.
+# administer the router, so reject SSH/HTTP/HTTPS (and the AdGuard UI on
+# :3000 when it runs here) from each. The input-REJECT zones (filtered,
+# local) already can't.
+{% set mgmt_ports = '22 80 443' ~ (' 3000' if (adguard_local | default(false)) and is_gw else '') %}
 {% for vlan in vlans if vlan.dns == 'trusted' and vlan.name != 'infra' %}
 uci set firewall.rule_noadmin_{{ vlan.name }}=rule
 uci set firewall.rule_noadmin_{{ vlan.name }}.name='Deny-mgmt-from-{{ vlan.name }}'
 uci set firewall.rule_noadmin_{{ vlan.name }}.src='{{ vlan.name }}'
 uci set firewall.rule_noadmin_{{ vlan.name }}.proto='tcp'
-uci set firewall.rule_noadmin_{{ vlan.name }}.dest_port='22 80 443'
+uci set firewall.rule_noadmin_{{ vlan.name }}.dest_port='{{ mgmt_ports }}'
 uci set firewall.rule_noadmin_{{ vlan.name }}.target='REJECT'
 {% endfor %}
 
