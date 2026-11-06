@@ -11,7 +11,7 @@
   tasks:
     - name: Validate a MAC was given
       ansible.builtin.assert:
-        that: mac is defined and mac | length >= 12
+        that: mac is defined and mac is match('^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
         fail_msg: "Pass -e mac=AA:BB:CC:DD:EE:FF"
 
     - name: List quarantined devices
@@ -30,11 +30,13 @@
 
     # fw4 puts a rule without dest in the input chain (traffic to the router)
     # and one with dest in forward, so it takes both. proto defaults to tcp+udp.
-    # Flows already established keep running: fw4 accepts them before these rules.
+    # fw4 accepts established flows before these rules; the nft set below cuts those.
     - name: Quarantine — DROP all traffic from the MAC (to the router and through it)
       when: state == 'on'
       raw: |
         set -e
+        revert_on_failure() { rc=$?; [ "$rc" -eq 0 ] || uci revert firewall; }
+        trap revert_on_failure EXIT
         S=q_{{ mac | replace(':', '') | lower }}
         for R in "$S" "${S}_fwd"; do
           uci set firewall.$R=rule
@@ -45,8 +47,6 @@
           uci set firewall.$R.target='DROP'
         done
         uci set firewall.${S}_fwd.dest='*'
-        uci commit firewall
-        /etc/init.d/firewall reload
 
     - name: Release — remove the quarantine rules
       when: state == 'off'
@@ -54,5 +54,51 @@
         S=q_{{ mac | replace(':', '') | lower }}
         uci -q delete firewall.$S || true
         uci -q delete firewall.${S}_fwd || true
-        uci commit firewall
+
+    # fw4 includes /etc/nftables.d/*.nft in its table on every reload. A drop at
+    # prerouting/raw runs before conntrack, so it also cuts flows that were open
+    # at quarantine time. The uci rules above are the record; the set mirrors
+    # them, and the file exists only while something is quarantined.
+    # The tasks above only stage uci changes: they're committed here once the
+    # new ruleset passes fw4 check, and reverted with the old file otherwise.
+    - name: Sync the quarantine nft set with the uci rules, then commit and reload
+      when: state in ['on', 'off']
+      raw: |
+        set -e
+        f=/etc/nftables.d/50-quarantine.nft
+        prev=/tmp/50-quarantine.nft.prev.$$
+        show=$(uci show firewall)
+        bad=$(printf '%s\n' "$show" | grep '^firewall\.q_[0-9a-f]*\.src_mac=' \
+          | grep -v -E "src_mac='([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}'$" || true)
+        [ -z "$bad" ] || printf 'WARNING: not in the nft set, open flows stay up (release and re-quarantine):\n%s\n' "$bad"
+        # Exact single-MAC values only: anything else could break the ruleset.
+        macs=$(printf '%s\n' "$show" \
+          | sed -n "s/^firewall\.q_[0-9a-f]*\.src_mac='\(\([0-9A-Fa-f]\{2\}:\)\{5\}[0-9A-Fa-f]\{2\}\)'$/\1/p" \
+          | tr 'A-F' 'a-f' | sort -u)
+        mkdir -p /etc/nftables.d
+        rm -f "$prev"
+        if [ -e "$f" ]; then cp "$f" "$prev"; fi
+        if [ -z "$macs" ]; then
+          rm -f "$f"
+        else
+          {
+            echo "# Managed by openwrt-config ansible/quarantine.yml, do not edit."
+            echo "set quarantine_macs {"
+            echo "  type ether_addr"
+            echo "  elements = { $(echo $macs | sed 's/ /, /g') }"
+            echo "}"
+            echo "chain quarantine_pre {"
+            echo "  type filter hook prerouting priority raw; policy accept;"
+            echo "  ether saddr @quarantine_macs counter drop"
+            echo "}"
+          } >"$f"
+        fi
+        # Check the whole ruleset first; on failure put the old file back.
+        if ! fw4 -q check || ! uci commit firewall; then
+          if [ -e "$prev" ]; then mv "$prev" "$f"; else rm -f "$f"; fi
+          uci revert firewall
+          echo "fw4 check or uci commit failed; uci changes reverted, previous file restored" >&2
+          exit 1
+        fi
+        rm -f "$prev"
         /etc/init.d/firewall reload
