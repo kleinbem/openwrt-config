@@ -6,6 +6,17 @@
 - name: Configure fleet gateway DHCP + DNS handoff
   when: "'gateways' in group_names"
   block:
+    # lease_<mac> sections are ours: drop the ones no longer in static_leases
+    # (a changed MAC would otherwise leave two reservations for one IP).
+    - name: Drop managed DHCP reservations that are no longer listed
+      raw: |
+        set -e
+        keep=' {% for l in static_leases %}lease_{{ l.mac | replace(':', '') | lower }} {% endfor %}'
+        for s in $(uci show dhcp | sed -n 's/^dhcp\.\(lease_[0-9a-f]*\)=host$/\1/p'); do
+          case "$keep" in *" $s "*) ;; *) uci delete "dhcp.$s" ;; esac
+        done
+        uci commit dhcp
+
     # uci section names allow only [A-Za-z0-9_], so a host name like hass-pi
     # can't be one: key the section by MAC and keep the name in `name`.
     # Sections from older runs were keyed by name; drop those that were valid.
