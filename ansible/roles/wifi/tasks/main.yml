@@ -10,7 +10,7 @@
 - name: Validate Wi-Fi network names and channel plan bands
   ansible.builtin.assert:
     that:
-      - wifi_networks | map(attribute='name') | reject('match', '^[A-Za-z0-9_]+$') | list | length == 0
+      - wifi_networks | map(attribute='name') | reject('match', '^[A-Za-z0-9_]+\\Z') | list | length == 0
       - (wifi_channel_plan | default({})).keys() | reject('in', ['2g', '5g', '6g', '60g']) | list | length == 0
     fail_msg: wifi_networks names must match [A-Za-z0-9_]+ and wifi_channel_plan keys must be 2g/5g/6g/60g.
     quiet: true

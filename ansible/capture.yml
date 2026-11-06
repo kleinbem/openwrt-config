@@ -24,18 +24,19 @@
           {%- else -%}br-lan.{{ vlans | selectattr('name', 'equalto', vlan) | map(attribute='id') | first }}
           {%- endif -%}
 
-    # rm first, so a failed run can't fetch an old capture. busybox timeout
-    # passes on tcpdump's own status (0 after SIGTERM); 124/143 cover others.
-    - name: "Capture for the given seconds on {{ cap_iface }}"
-      raw: |
-        rm -f {{ capture_dir }}/capture.pcap
-        timeout {{ seconds }} tcpdump -i {{ cap_iface }} -s0 -U -w {{ capture_dir }}/capture.pcap {{ filter }}
-        rc=$?
-        case $rc in 0|124|143) ;; *) echo "tcpdump failed (rc $rc)"; exit "$rc" ;; esac
-        [ -s {{ capture_dir }}/capture.pcap ] || { echo "tcpdump wrote no capture file"; exit 1; }
-
-    - name: Pull the .pcap to ./captures/
+    # rm first, so a failed run can't fetch an old capture; the always block
+    # removes whatever the capture left. busybox timeout passes on tcpdump's
+    # own status (0 after SIGTERM); 124/143 cover others.
+    - name: Capture and pull the .pcap to ./captures/
       block:
+        - name: "Capture for the given seconds on {{ cap_iface }}"
+          raw: |
+            rm -f {{ capture_dir }}/capture.pcap
+            timeout {{ seconds }} tcpdump -i {{ cap_iface }} -s0 -U -w {{ capture_dir }}/capture.pcap {{ filter }}
+            rc=$?
+            case $rc in 0|124|143) ;; *) echo "tcpdump failed (rc $rc)"; exit "$rc" ;; esac
+            [ -s {{ capture_dir }}/capture.pcap ] || { echo "tcpdump wrote no capture file"; exit 1; }
+
         - name: Fetch the capture
           ansible.builtin.fetch:
             src: "{{ capture_dir }}/capture.pcap"

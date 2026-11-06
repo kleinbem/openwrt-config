@@ -50,11 +50,10 @@
 
 # ---------------------------------------------------------------------------
 # Terminal task: SSH drops as the management IP moves onto infra (mgmt_ip).
-# Reconnect on an infra access port. The drop shows as unreachable or ssh's
-# rc 255 and is expected; any other failure of the restart still fails.
+# Reconnect on an infra access port. The restart runs detached after 2 s, so
+# this task returns before the drop: rc 0 proves it was scheduled, and an
+# unreachable router still fails. Its output: /tmp/network-restart.log.
 # ---------------------------------------------------------------------------
 - name: Restart network (TERMINAL — drops SSH, reconnect on infra VLAN)
-  raw: /etc/init.d/network restart
-  register: network_restart
-  ignore_unreachable: true
-  failed_when: network_restart.rc | default(0) not in [0, 255]
+  raw: |
+    ( trap '' HUP; sleep 2; /etc/init.d/network restart ) >/tmp/network-restart.log 2>&1 </dev/null &
