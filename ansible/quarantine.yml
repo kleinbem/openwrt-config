@@ -76,7 +76,8 @@
           | sed -n "s/^firewall\.q_[0-9a-f]*\.src_mac='\(\([0-9A-Fa-f]\{2\}:\)\{5\}[0-9A-Fa-f]\{2\}\)'$/\1/p" \
           | tr 'A-F' 'a-f' | sort -u)
         mkdir -p /etc/nftables.d
-        [ -e "$f" ] && cp "$f" "$prev" || rm -f "$prev"
+        rm -f "$prev"
+        if [ -e "$f" ]; then cp "$f" "$prev"; fi
         if [ -z "$macs" ]; then
           rm -f "$f"
         else
