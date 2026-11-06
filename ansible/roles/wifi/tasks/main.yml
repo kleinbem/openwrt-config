@@ -26,21 +26,24 @@
     label: "{{ item.name }}" # don't print the psk_vlans (passphrases) in the loop header
   no_log: true
 
-- name: Render Wi-Fi uci script
-  ansible.builtin.template:
-    src: wifi-config.sh.j2
-    dest: /tmp/wifi-config.sh
-    mode: "0700"
-  no_log: true # the rendered script embeds SSIDs + passphrases — keep out of logs/--diff
-  diff: false
+# The rendered script embeds passphrases: remove it even when applying fails.
+- name: Apply Wi-Fi configuration
+  block:
+    - name: Render Wi-Fi uci script
+      ansible.builtin.template:
+        src: wifi-config.sh.j2
+        dest: /tmp/wifi-config.sh
+        mode: "0700"
+      no_log: true # the rendered script embeds SSIDs + passphrases — keep out of logs/--diff
+      diff: false
 
-- name: Apply Wi-Fi configuration (uci commit + wifi reload)
-  raw: sh /tmp/wifi-config.sh
-
-- name: Remove rendered script (contains passphrases)
-  ansible.builtin.file:
-    path: /tmp/wifi-config.sh
-    state: absent
+    - name: Apply Wi-Fi configuration (uci commit + wifi reload)
+      raw: sh /tmp/wifi-config.sh
+  always:
+    - name: Remove rendered script (contains passphrases)
+      ansible.builtin.file:
+        path: /tmp/wifi-config.sh
+        state: absent
 
 # The mt76/BE14000 EEPROM trap can leave every radio at 6 dBm. Assert each AP
 # interface reaches wifi_min_txpower_dbm. rc 1 = radios still coming up

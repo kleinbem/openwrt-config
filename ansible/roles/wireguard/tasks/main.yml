@@ -12,6 +12,7 @@
     and (wg_peers | default([])) | length > 0
   block:
     - name: WireGuard interface (server)
+      no_log: true # private and preshared keys are in the command
       raw: |
         uci set network.wg0=interface
         uci set network.wg0.proto='wireguard'
@@ -22,6 +23,7 @@
         uci commit network
 
     - name: Peers (clients)
+      no_log: true # private and preshared keys are in the command
       raw: |
         while uci -q delete network.@wireguard_wg0[0]; do :; done
         {% for peer in wg_peers %}
