@@ -27,11 +27,13 @@ deploy:
 
 # Configure a specific host or group
 configure target:
-    ansible-playbook -i ansible/inventory.ini ansible/site.yml --limit {{target}}
+    @printf '%s' {{quote(target)}} | LC_ALL=C grep -q '[A-Za-z0-9]' || { echo 'error: target names no host or group (use deploy for all)' >&2; exit 1; }
+    ansible-playbook -i ansible/inventory.ini ansible/site.yml --limit {{quote(target)}}
 
 # Dry-run configuration (check mode)
 check target:
-    ansible-playbook -i ansible/inventory.ini ansible/site.yml --limit {{target}} --check --diff
+    @printf '%s' {{quote(target)}} | LC_ALL=C grep -q '[A-Za-z0-9]' || { echo 'error: target names no host or group (use deploy for all)' >&2; exit 1; }
+    ansible-playbook -i ansible/inventory.ini ansible/site.yml --limit {{quote(target)}} --check --diff
 
 # Render every role template per host with dummy secrets (never touches a
 # router) and shellcheck the generated uci scripts. CI runs the same.
