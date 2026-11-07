@@ -12,8 +12,9 @@ default:
 
 # --- Aliases for Meta-Repo consistency ---
 
-provision *args:
-    @just deploy {{args}}
+# Configure one host or group, or every router when no target is given
+provision target="":
+    @{{ if target == "" { "just deploy" } else { "just configure " + quote(target) } }}
 
 verify:
     @just check all
