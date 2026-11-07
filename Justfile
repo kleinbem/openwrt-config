@@ -27,11 +27,11 @@ deploy:
 
 # Configure a specific host or group
 configure target:
-    ansible-playbook -i ansible/inventory.ini ansible/site.yml --limit {{target}}
+    ansible-playbook -i ansible/inventory.ini ansible/site.yml --limit {{quote(target)}}
 
 # Dry-run configuration (check mode)
 check target:
-    ansible-playbook -i ansible/inventory.ini ansible/site.yml --limit {{target}} --check --diff
+    ansible-playbook -i ansible/inventory.ini ansible/site.yml --limit {{quote(target)}} --check --diff
 
 # Render every role template per host with dummy secrets (never touches a
 # router) and shellcheck the generated uci scripts. CI runs the same.
