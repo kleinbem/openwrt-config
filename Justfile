@@ -27,12 +27,12 @@ deploy:
 
 # Configure a specific host or group
 configure target:
-    @[ -n {{quote(target)}} ] || { echo 'error: empty target' >&2; exit 1; }
+    @[ -n "$(printf '%s' {{quote(target)}} | tr -d '[:space:]')" ] || { echo 'error: empty target' >&2; exit 1; }
     ansible-playbook -i ansible/inventory.ini ansible/site.yml --limit {{quote(target)}}
 
 # Dry-run configuration (check mode)
 check target:
-    @[ -n {{quote(target)}} ] || { echo 'error: empty target' >&2; exit 1; }
+    @[ -n "$(printf '%s' {{quote(target)}} | tr -d '[:space:]')" ] || { echo 'error: empty target' >&2; exit 1; }
     ansible-playbook -i ansible/inventory.ini ansible/site.yml --limit {{quote(target)}} --check --diff
 
 # Render every role template per host with dummy secrets (never touches a
