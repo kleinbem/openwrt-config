@@ -77,13 +77,14 @@ uci set network.{{ vlan.name }}.ipaddr='{{ vlan.gateway }}'
 uci set network.{{ vlan.name }}.netmask='255.255.255.0'
 {% elif vlan.name == 'infra' %}
 # AP management address (generated per-host `mgmt_ip` = inventory.nix ip;
-# every AP gets its own) — routes + resolves via the gateway/AdGuard.
+# every AP gets its own) — routes via the gateway, resolves via AdGuard
+# (on the gateway itself when adguard_local, as the DHCP option 6 below).
 uci set network.{{ vlan.name }}.proto='static'
 uci set network.{{ vlan.name }}.ipaddr='{{ mgmt_ip }}'
 uci set network.{{ vlan.name }}.netmask='255.255.255.0'
 uci set network.{{ vlan.name }}.gateway='{{ vlan.gateway }}'
 uci -q delete network.{{ vlan.name }}.dns || true
-uci add_list network.{{ vlan.name }}.dns='{{ adguard_ip }}'
+uci add_list network.{{ vlan.name }}.dns='{{ vlan.gateway if (adguard_local | default(false)) else adguard_ip }}'
 {% else %}
 # AP is a dumb bridge for this VLAN — L2 only, no address.
 uci set network.{{ vlan.name }}.proto='none'
@@ -179,7 +180,7 @@ uci set firewall.zn_{{ vlan.name }}.forward='REJECT'
 
 # Zone→zone forwardings from each VLAN's reach_out (+ WAN where allowed).
 {% for vlan in vlans %}
-{% for dest in vlan.reach_out | default([]) if dest != 'dns' %}
+{% for dest in vlan.reach_out | default([]) %}
 uci set firewall.fwd_{{ vlan.name }}_{{ dest }}=forwarding
 uci set firewall.fwd_{{ vlan.name }}_{{ dest }}.src='{{ vlan.name }}'
 uci set firewall.fwd_{{ vlan.name }}_{{ dest }}.dest='{{ dest }}'
