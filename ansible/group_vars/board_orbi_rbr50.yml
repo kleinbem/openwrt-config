@@ -1,7 +1,8 @@
 ---
-# Netgear Orbi RBR50 / RBS50 v1 (IPQ4019, Wi-Fi 5), access points only.
-# Both models share one DTS, so board_orbi_rbs50.yml is a symlink to this file.
-# Radios: IPQ4019 2.4 GHz 2x2, IPQ4019 5 GHz 2x2, QCA9984 5 GHz 4x4; ports lan1-3 + wan.
+# Netgear Orbi RBR50 / RBS50 v1 (Qualcomm IPQ4019, Wi-Fi 5). Access points only.
+# Both models share the radios but NOT the ports (router DTS: wan + lan1-3;
+# satellite DTS: lan1-4, no wan), so board_orbi_rbs50.yml is its own file.
+# Group membership is generated from inventory.nix.
 # v2 units (NAND, `artmtd -r hw_revision` = 02) aren't in OpenWrt stable
 # (upstream PR #22321): never flash a v1 image on one.
 
@@ -12,16 +13,25 @@ expected_ram_mib: 512
 
 # Wi-Fi 5: ath10k rejects EHT/HE modes. 80 MHz on both 5 GHz radios.
 wifi_htmodes: { 2g: "HT20", 5g: "VHT80" }
-# Two 5 GHz radios, so pin them apart: DFS 100 for clients, 36 for the other
-# (149+ is 25 mW SRD in Ireland). Radios take these in uci order; a backhaul
-# radio is skipped and uses wifi_backhaul_channel instead.
+# Two 5 GHz radios on one board, split by band in the DTS
+# (qcom-ipq4019-rbr50/rbs50.dts, OpenWrt 25.12):
+#   IPQ4019 wifi1 (a800000.wifi, 2x2): full 5 GHz, used for the low band
+#   QCA9984 on PCIe (4x4): ieee80211-freq-limit 5470–5875 MHz = ch 100+ only
+# So the QCA9984 can't do channel 36. The backhaul takes the IPQ4019 radio on
+# the low band (non-DFS on purpose: a radar hit would otherwise drop every
+# satellite at once; 149+ is 25 mW SRD in IE, useless); the 4x4 QCA9984 serves
+# clients on the DFS block 100–112, where a radar hit only moves clients.
+# Client radios take wifi_channel_plan in uci order; the backhaul radio is
+# skipped and takes wifi_backhaul_channel instead. (Every Orbi runs a
+# backhaul; without one, the QCA9984 could land on 36 and fail.)
 wifi_channel_plan: { 5g: [100, 36] }
 
-# Backhaul on the 4x4 QCA9984, which enumerates after the two on-SoC radios
-# (second 5 GHz radio, index 1). Check stream counts with `iw phy` if unsure.
-# Non-DFS channel on purpose: a radar hit would drop every satellite at once.
+# Backhaul radio picked by its uci `path` (glob), not by enumeration order:
+# phy numbering between the on-SoC (AHB) and PCIe radios isn't fixed. The
+# index stays as the fallback for boards without a path.
 wifi_backhaul_band: 5g
-wifi_backhaul_radio_index: 1
+wifi_backhaul_radio_path: "*a800000.wifi"
+wifi_backhaul_radio_index: 0
 wifi_backhaul_channel: 36
 wifi_backhaul_htmode: VHT80
 
