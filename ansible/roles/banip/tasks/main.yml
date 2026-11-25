@@ -1,0 +1,30 @@
+---
+# ---------------------------------------------------------------------------
+# banIP: drop known-bad source IPs at the WAN edge, gateway only.
+# Feed choice and RAM budget: banip_feeds in group_vars/all.yml.
+# ---------------------------------------------------------------------------
+- name: Configure banIP (gateway edge blocking)
+  when: "'gateways' in group_names"
+  block:
+    - name: Base banIP settings
+      raw: |
+        uci set banip.global.ban_enabled='1'
+        uci set banip.global.ban_autodetect='1'
+        uci set banip.global.ban_nftexpiry='30m'
+        uci set banip.global.ban_loginput='1'
+        uci set banip.global.ban_logforwardwan='1'
+        uci set banip.global.ban_logforwardlan='0'
+        uci set banip.global.ban_protov4='1'
+        uci set banip.global.ban_protov6='1'
+        uci commit banip
+
+    - name: Select the (modest) feed set
+      raw: |
+        uci -q delete banip.global.ban_feed
+        {% for feed in banip_feeds | default(['firehol_level1', 'debl', 'backscatter']) %}
+        uci add_list banip.global.ban_feed='{{ feed }}'
+        {% endfor %}
+        uci commit banip
+
+    - name: Enable + start banIP
+      raw: /etc/init.d/banip enable && /etc/init.d/banip start

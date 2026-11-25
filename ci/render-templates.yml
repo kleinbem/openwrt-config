@@ -1,0 +1,65 @@
+---
+# Renders every role template for each router in the inventory, with
+# ci/dummy-secrets.yml as extra vars, into .render/<host>/ so the generated
+# uci scripts can be shellchecked. Runs only on localhost; never touches a
+# router. Use: just render-check
+- name: Render role templates
+  hosts: routers
+  gather_facts: false
+  connection: local
+  vars:
+    roles_dir: "{{ playbook_dir }}/../ansible/roles"
+    out_dir: "{{ playbook_dir }}/../.render/{{ inventory_hostname }}"
+    templates:
+      - network/templates/network-config.sh.j2
+      - network/templates/avahi-daemon.conf.j2
+      - wifi/templates/wifi-config.sh.j2
+      - ui/templates/hub.html.j2
+    # Rendered per MPSK network below, with the loop item it expects.
+    loop_templates:
+      - wifi/templates/wpa_psk_file.j2
+  tasks:
+    - name: Find role templates
+      ansible.builtin.find:
+        paths: "{{ roles_dir }}"
+        patterns: "*.j2"
+        recurse: true
+      register: found_templates
+      run_once: true
+      delegate_to: localhost
+
+    - name: Every role template is rendered here
+      ansible.builtin.assert:
+        that: missing | length == 0
+        fail_msg: "Add to ci/render-templates.yml: {{ missing }}"
+      vars:
+        found: "{{ found_templates.files | map(attribute='path') | map('relpath', roles_dir) | list }}"
+        missing: "{{ found | difference(templates + loop_templates) }}"
+      run_once: true
+      delegate_to: localhost
+
+    - name: Output directory
+      ansible.builtin.file:
+        path: "{{ out_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+
+    - name: Render templates
+      ansible.builtin.template:
+        src: "{{ roles_dir }}/{{ item }}"
+        dest: "{{ out_dir }}/{{ item | basename | regex_replace('\\.j2$', '') }}"
+        mode: "0644"
+      loop: "{{ templates }}"
+      delegate_to: localhost
+
+    # As roles/wifi: one map file per MPSK network.
+    - name: Render MPSK wpa_psk map files
+      ansible.builtin.template:
+        src: "{{ roles_dir }}/wifi/templates/wpa_psk_file.j2"
+        dest: "{{ out_dir }}/{{ item.name }}.wpa_psk"
+        mode: "0600"
+      loop: "{{ wifi_networks | selectattr('mpsk', 'defined') | selectattr('mpsk') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      delegate_to: localhost

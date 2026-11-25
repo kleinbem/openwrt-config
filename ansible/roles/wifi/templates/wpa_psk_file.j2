@@ -1,0 +1,7 @@
+{#- hostapd MPSK map: one line per password → VLAN. The wildcard MAC
+    00:00:00:00:00:00 means "any device using this passphrase". hostapd tags
+    the station into br-lan.<vlanid> via dynamic_vlan. Rendered per mpsk
+    network by roles/wifi (mode 0600 — contains passphrases). -#}
+{% for entry in item.psk_vlans %}
+vlanid={{ entry.vlan }} 00:00:00:00:00:00 {{ entry.key }}
+{% endfor %}

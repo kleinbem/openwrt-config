@@ -1,0 +1,10 @@
+---
+profile: moderate
+
+exclude_paths:
+  - .direnv/
+
+skip_list:
+  # UCI has no ansible module; the raw pipelines in roles/router are
+  # inherently imperative and always mutate (documented per-task).
+  - no-changed-when

@@ -1,0 +1,12 @@
+---
+# Gateway-only secrets. Loaded from kleinbem-secrets/openwrt/gateway.yaml,
+# a separate sops file from shared.yaml so plain APs never get the DHCP
+# lease list (device MACs) or the WireGuard server key. all.yml holds the
+# empty defaults for every other host.
+_gateway_secret_vars: >-
+  {{ lookup('community.sops.sops',
+            playbook_dir ~ '/../../kleinbem-secrets/openwrt/gateway.yaml')
+     | from_yaml }}
+
+static_leases: "{{ _gateway_secret_vars.static_leases }}"
+wg_server_private_key: "{{ _gateway_secret_vars.wg_server_private_key | default('') }}"

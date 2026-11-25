@@ -1,0 +1,24 @@
+{#- mDNS reflector: bridge service discovery trusted<->iot ONLY (so phones on
+    trusted find Chromecast/HomeKit/printers on iot). NOT guest/cameras.
+    allow-interfaces = the two VLAN netdevs; the reflector receives mDNS on
+    one and re-emits on the other. disable-publishing = the router itself
+    advertises nothing, it only reflects. Rendered by roles/network. -#}
+{%- set mdns_vlans = vlans | selectattr('name', 'in', ['trusted', 'iot']) | list -%}
+[server]
+use-ipv4=yes
+use-ipv6=no
+allow-interfaces={% for v in mdns_vlans %}br-lan.{{ v.id }}{% if not loop.last %},{% endif %}{% endfor %}
+
+ratelimit-interval-usec=1000000
+ratelimit-burst=1000
+
+[wide-area]
+enable-wide-area=no
+
+[publish]
+disable-publishing=yes
+disable-user-service-publishing=yes
+
+[reflector]
+enable-reflector=yes
+reflect-ipv=no

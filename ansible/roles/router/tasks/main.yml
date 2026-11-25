@@ -1,0 +1,64 @@
+---
+# ---------------------------------------------------------------------------
+# Fleet gateway: static DHCP leases (gateway only). Changes only what clients
+# get, not the router's own IP, so the SSH session survives.
+# ---------------------------------------------------------------------------
+- name: Configure fleet gateway DHCP + DNS handoff
+  when: "'gateways' in group_names"
+  block:
+    # lease_<mac> sections are ours: drop the ones no longer in static_leases
+    # (a changed MAC would otherwise leave two reservations for one IP).
+    - name: Drop managed DHCP reservations that are no longer listed
+      raw: |
+        set -e
+        keep=' {% for l in static_leases %}lease_{{ l.mac | replace(':', '') | lower }} {% endfor %}'
+        show=$(uci show dhcp)
+        for s in $(printf '%s\n' "$show" | sed -n 's/^dhcp\.\(lease_[0-9a-f]*\)=host$/\1/p'); do
+          case "$keep" in *" $s "*) ;; *) uci delete "dhcp.$s" ;; esac
+        done
+        uci commit dhcp
+
+    # uci section names allow only [A-Za-z0-9_], so a host name like hass-pi
+    # can't be one: key the section by MAC and keep the name in `name`.
+    # Sections from older runs were keyed by name; drop those that were valid.
+    - name: Pin fleet static DHCP reservations
+      raw: |
+        set -e
+        S=lease_{{ item.mac | replace(':', '') | lower }}
+        {% if item.name is match('^[A-Za-z0-9_]+$') %}
+        uci -q delete dhcp.{{ item.name }} || true
+        {% endif %}
+        uci -q delete dhcp.$S || true
+        uci set dhcp.$S=host
+        uci set dhcp.$S.name='{{ item.name }}'
+        uci set dhcp.$S.ip='{{ item.ip }}'
+        uci set dhcp.$S.mac='{{ item.mac }}'
+        uci commit dhcp
+      loop: "{{ static_leases }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Restart dnsmasq (apply DHCP/DNS changes)
+      raw: /etc/init.d/dnsmasq restart
+
+# Monitoring & Telemetry (Lightweight exporter for OpenWrt)
+# The collectors are baked into the firmware image (openwrt-builder profile);
+# this apk call only heals drift on routers flashed from older images.
+# OpenWrt ≥25.12 uses apk — the opkg module no longer works there.
+- name: Install Prometheus Node Exporter (LUA)
+  ansible.builtin.command:
+    argv:
+      - apk
+      - add
+      - prometheus-node-exporter-lua
+      - prometheus-node-exporter-lua-netstat
+      - prometheus-node-exporter-lua-openwrt
+      - prometheus-node-exporter-lua-wifi
+  register: router_exporter_apk
+  changed_when: "'Installing' in router_exporter_apk.stdout"
+
+- name: Enable and Start Node Exporter
+  ansible.builtin.service:
+    name: prometheus-node-exporter-lua
+    enabled: true
+    state: started

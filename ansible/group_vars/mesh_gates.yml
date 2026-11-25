@@ -1,0 +1,6 @@
+---
+# inventory.nix tag `mesh-gate`: the one Orbi wired to a BPI-R4. Keeps its
+# wired trunk AND brings up the 802.11s backhaul the mesh nodes attach to.
+# A mesh needs exactly one gate per wired segment; two gates on one LAN would
+# be bridged twice (STP would block one, but don't rely on it).
+wifi_backhaul: gate
